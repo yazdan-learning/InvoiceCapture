@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "moduleDetection": "force",
+    "noEmit": true
+  },
+  "include": [
+    "src"
+  ]
+}
+
+
