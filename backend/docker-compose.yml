@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: invoice_ocr
+      POSTGRES_PASSWORD: invoice_ocr
+      POSTGRES_DB: invoice_ocr
+    ports:
+      - "5434:5432"
+    volumes:
+      - invoice_ocr_db_data:/var/lib/postgresql/data
+
+volumes:
+  invoice_ocr_db_data:

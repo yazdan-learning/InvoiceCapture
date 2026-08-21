@@ -1,0 +1,72 @@
+import { z } from 'zod';
+
+const statusEnum = z.enum([
+  'PENDING',
+  'PROCESSING',
+  'EXTRACTED',
+  'FAILED',
+  'REVIEWED',
+  'SUBMITTED',
+  'APPROVED',
+  'REJECTED'
+]);
+
+export const listInvoicesQuerySchema = z.object({
+  status: statusEnum.optional(),
+  search: z.string().trim().min(1).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20)
+});
+
+export const exportInvoicesQuerySchema = z.object({
+  status: statusEnum.optional()
+});
+
+export const invoiceIdParamsSchema = z.object({
+  id: z.string().uuid()
+});
+
+const lineItemSchema = z.object({
+  description: z.string().min(1),
+  quantity: z.number().nullable().optional(),
+  unitPrice: z.number().nullable().optional(),
+  totalPrice: z.number().nullable().optional(),
+  taxRate: z.number().nullable().optional()
+});
+
+// Only EXTRACTED/REVIEWED are settable via the API — PENDING/PROCESSING/FAILED
+// are internal states set during the upload flow, not something a user picks.
+export const updateInvoiceSchema = z.object({
+  invoiceNumber: z.string().nullable().optional(),
+  invoiceDate: z.coerce.date().nullable().optional(),
+  dueDate: z.coerce.date().nullable().optional(),
+  vendorName: z.string().nullable().optional(),
+  vendorAddress: z.string().nullable().optional(),
+  vendorTaxId: z.string().nullable().optional(),
+  customerName: z.string().nullable().optional(),
+  customerAddress: z.string().nullable().optional(),
+  subtotal: z.number().nullable().optional(),
+  taxRate: z.number().nullable().optional(),
+  taxAmount: z.number().nullable().optional(),
+  totalAmount: z.number().nullable().optional(),
+  currency: z.string().nullable().optional(),
+  paymentMethod: z.string().nullable().optional(),
+  paymentTerms: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  categoryId: z.string().uuid().nullable().optional(),
+  status: z.enum(['EXTRACTED', 'REVIEWED']).optional(),
+  items: z.array(lineItemSchema).optional()
+});
+
+export const approveSchema = z.object({
+  comment: z.string().trim().min(1).nullable().optional()
+});
+
+// Rejecting without saying why leaves the submitter with nothing to fix.
+export const rejectSchema = z.object({
+  comment: z.string().trim().min(1, 'A reason is required when rejecting an invoice')
+});
+
+export type UpdateInvoiceInput = z.infer<typeof updateInvoiceSchema>;
+export type ListInvoicesQuery = z.infer<typeof listInvoicesQuerySchema>;
+export type ExportInvoicesQuery = z.infer<typeof exportInvoicesQuerySchema>;
