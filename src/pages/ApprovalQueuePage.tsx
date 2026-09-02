@@ -46,34 +46,64 @@ export function ApprovalQueuePage() {
           <p>Invoices submitted by your team will show up here.</p>
         </div>
       ) : (
-        <div className="invoice-table-wrap">
-          <table className="invoice-table">
-            <thead>
-              <tr>
-                <th>Submitted by</th>
-                <th>Vendor</th>
-                <th>Invoice #</th>
-                <th>Date</th>
-                <th className="align-right">Amount</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map((invoice) => (
-                <tr key={invoice.id} onClick={() => navigate(`/invoices/${invoice.id}`)}>
-                  <td>{invoice.uploader.name}</td>
-                  <td>{invoice.vendorName || 'Unknown vendor'}</td>
-                  <td>{invoice.invoiceNumber || '—'}</td>
-                  <td>{invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString() : '—'}</td>
-                  <td className="align-right amount-cell">{formatAmount(invoice.totalAmount, invoice.currency)}</td>
-                  <td>
-                    <StatusPill status={invoice.status} />
-                  </td>
+        <>
+          <div className="invoice-table-wrap">
+            <table className="invoice-table">
+              <colgroup>
+                <col className="col-submitted-by" />
+                <col className="col-vendor" />
+                <col className="col-invoice-num" />
+                <col className="col-date" />
+                <col className="col-amount" />
+                <col className="col-status" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Submitted by</th>
+                  <th>Vendor</th>
+                  <th>Invoice #</th>
+                  <th>Date</th>
+                  <th className="align-right">Amount</th>
+                  <th>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {invoices.map((invoice) => (
+                  <tr key={invoice.id} onClick={() => navigate(`/invoices/${invoice.id}`)}>
+                    <td>{invoice.uploader.name}</td>
+                    <td>
+                      <span className="vendor-name" title={invoice.vendorName || 'Unknown vendor'}>
+                        {invoice.vendorName || 'Unknown vendor'}
+                      </span>
+                    </td>
+                    <td>{invoice.invoiceNumber || '—'}</td>
+                    <td>{invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString() : '—'}</td>
+                    <td className="align-right amount-cell">{formatAmount(invoice.totalAmount, invoice.currency)}</td>
+                    <td>
+                      <StatusPill status={invoice.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="invoice-cards">
+            {invoices.map((invoice) => (
+              <div key={invoice.id} className="invoice-card" onClick={() => navigate(`/invoices/${invoice.id}`)}>
+                <div className="invoice-card-top">
+                  <span className="invoice-card-vendor">{invoice.vendorName || 'Unknown vendor'}</span>
+                  <StatusPill status={invoice.status} />
+                </div>
+                <div className="invoice-card-amount">{formatAmount(invoice.totalAmount, invoice.currency)}</div>
+                <div className="invoice-card-meta">
+                  <span>submitted by {invoice.uploader.name}</span>
+                  <span>{invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString() : '—'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

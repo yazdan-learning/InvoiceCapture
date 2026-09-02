@@ -162,18 +162,16 @@ export function InvoiceReviewPage() {
     setSaving('draft');
     setError(null);
     try {
-      const updated = await updateInvoice(id, payload);
-      setInvoice(updated);
-      setForm(toFormState(updated));
+      await updateInvoice(id, payload);
+      navigate('/invoices');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save changes');
-    } finally {
       setSaving(null);
     }
   };
 
-  // "Submit for approval" does both steps in one click: confirm the edited data
-  // (status -> REVIEWED) and immediately route it to the approver (-> SUBMITTED).
+  // Saves the edited fields, then routes the invoice to the approver
+  // (-> SUBMITTED, or straight to APPROVED if there's no manager to route to).
   // Also how a rejected invoice gets re-submitted after edits.
   const handleSubmitForApproval = async () => {
     if (!id) return;
@@ -183,7 +181,7 @@ export function InvoiceReviewPage() {
     setSaving('submit');
     setError(null);
     try {
-      await updateInvoice(id, { ...payload, status: 'REVIEWED' });
+      await updateInvoice(id, payload);
       await submitInvoice(id);
       navigate('/invoices');
     } catch (err) {
@@ -245,7 +243,7 @@ export function InvoiceReviewPage() {
   // Editable whenever it's the submitter's turn to act: fresh extraction,
   // saved as a draft, or kicked back with a rejection. Locked everywhere else
   // (waiting on someone else, or already decided).
-  const isEditable = ['EXTRACTED', 'FAILED', 'REVIEWED', 'REJECTED'].includes(invoice.status) && !isMyApproval;
+  const isEditable = ['EXTRACTED', 'FAILED', 'REJECTED'].includes(invoice.status) && !isMyApproval;
 
   return (
     <div className="review-page">

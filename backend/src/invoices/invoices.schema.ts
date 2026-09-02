@@ -1,15 +1,6 @@
 import { z } from 'zod';
 
-const statusEnum = z.enum([
-  'PENDING',
-  'PROCESSING',
-  'EXTRACTED',
-  'FAILED',
-  'REVIEWED',
-  'SUBMITTED',
-  'APPROVED',
-  'REJECTED'
-]);
+const statusEnum = z.enum(['PENDING', 'PROCESSING', 'EXTRACTED', 'FAILED', 'SUBMITTED', 'APPROVED', 'REJECTED']);
 
 export const listInvoicesQuerySchema = z.object({
   status: statusEnum.optional(),
@@ -34,8 +25,9 @@ const lineItemSchema = z.object({
   taxRate: z.number().nullable().optional()
 });
 
-// Only EXTRACTED/REVIEWED are settable via the API — PENDING/PROCESSING/FAILED
-// are internal states set during the upload flow, not something a user picks.
+// Pure field edits — no status here. Every status change goes through its own
+// action endpoint (submit/approve/reject), so there's exactly one way to move
+// an invoice forward, not an ambiguous status field mixed into a field-edit PATCH.
 export const updateInvoiceSchema = z.object({
   invoiceNumber: z.string().nullable().optional(),
   invoiceDate: z.coerce.date().nullable().optional(),
@@ -54,7 +46,6 @@ export const updateInvoiceSchema = z.object({
   paymentTerms: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   categoryId: z.string().uuid().nullable().optional(),
-  status: z.enum(['EXTRACTED', 'REVIEWED']).optional(),
   items: z.array(lineItemSchema).optional()
 });
 

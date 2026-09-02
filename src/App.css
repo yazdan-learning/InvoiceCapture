@@ -831,6 +831,7 @@ h1 {
 
 .invoice-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 14px;
 }
@@ -852,6 +853,7 @@ h1 {
   border-bottom: 1px solid #f1f5f9;
   color: #1e293b;
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .invoice-table tbody tr:last-child td {
@@ -867,6 +869,10 @@ h1 {
   background: #f8fafc;
 }
 
+.invoice-table--compact {
+  table-layout: auto;
+}
+
 .invoice-table--compact th,
 .invoice-table--compact td {
   padding: 10px 14px;
@@ -874,7 +880,7 @@ h1 {
 }
 
 .align-right {
-  text-align: right;
+  /* text-align: right; */
 }
 
 .amount-cell {
@@ -882,11 +888,55 @@ h1 {
   font-weight: 600;
 }
 
+/* Declared on <col> in a <colgroup>, not on individual <td>s — table-layout:
+   fixed sizes columns from the colgroup (or first row) once for the whole
+   table, so header and body cells always land in the same column. Setting a
+   width only on body <td>s let them drift out of alignment with the <th>s. */
+.col-vendor {
+  width: 220px;
+}
+
+/* Sized per-column to actual content instead of one uniform width — the
+   uniform 140px pushed the table's minimum width past 940px, which forced
+   horizontal scroll on any window narrower than ~1250px (a normal laptop
+   width, not an edge case). */
+.col-submitted-by {
+  width: 130px;
+}
+
+.col-invoice-num {
+  width: 100px;
+}
+
+.col-date {
+  width: 90px;
+}
+
+.col-category {
+  width: 100px;
+}
+
+.col-amount {
+  width: 110px;
+}
+
+.col-status {
+  width: 130px;
+}
+
 .vendor-cell {
   display: flex;
   align-items: center;
   gap: 8px;
   font-weight: 600;
+  min-width: 0;
+}
+
+.vendor-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .dup-flag {
@@ -898,6 +948,7 @@ h1 {
   padding: 2px 8px;
   border-radius: 999px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .pagination {
@@ -1558,9 +1609,10 @@ h1 {
   right: 0;
   background: white;
   border-top: 1px solid #e2e8f0;
-  padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
-  justify-content: space-around;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
   align-items: center;
+  justify-content: center;
+  gap: 22px;
   z-index: 20;
 }
 
@@ -1573,9 +1625,9 @@ h1 {
   text-decoration: none;
   font-size: 10px;
   font-weight: 600;
-  padding: 4px 8px;
+  padding: 4px 12px;
   border-radius: 10px;
-  flex: 1;
+  min-width: 56px;
 }
 
 .mobile-tab-icon {

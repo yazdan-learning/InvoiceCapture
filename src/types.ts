@@ -1,12 +1,4 @@
-export type InvoiceStatus =
-  | 'PENDING'
-  | 'PROCESSING'
-  | 'EXTRACTED'
-  | 'FAILED'
-  | 'REVIEWED'
-  | 'SUBMITTED'
-  | 'APPROVED'
-  | 'REJECTED';
+export type InvoiceStatus = 'PENDING' | 'PROCESSING' | 'EXTRACTED' | 'FAILED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
 
 export type Role = 'EMPLOYEE' | 'APPROVER' | 'ADMIN';
 

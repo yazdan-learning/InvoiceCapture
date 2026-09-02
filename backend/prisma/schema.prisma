@@ -63,7 +63,6 @@ enum InvoiceStatus {
   PROCESSING
   EXTRACTED // OCR/AI succeeded, awaiting human review
   FAILED
-  REVIEWED // human confirmed the data
   SUBMITTED // sent to the submitter's manager for approval
   APPROVED
   REJECTED // sent back to the submitter, editable and re-submittable

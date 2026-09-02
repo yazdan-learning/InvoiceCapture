@@ -119,16 +119,14 @@ export function createInvoicesService({ extractor, fileStorage, approverResolver
       return { buffer, mimeType: invoice.mimeType };
     },
 
+    // Pure field edits — no status transitions here. Every status change has
+    // its own dedicated action (submit/approve/reject) so there's exactly one
+    // way to move an invoice forward, not an ambiguous status field on PATCH.
     async update(organizationId: string, id: string, patch: UpdateInvoiceInput, actor: Actor) {
       const existing = await invoicesRepository.findById(organizationId, id);
       if (!existing || !canView(existing, actor)) throw new NotFoundError('Invoice not found');
       if (!canEdit(existing, actor)) {
         throw new BadRequestError('Only the person who submitted this invoice can edit it');
-      }
-
-      const finalTotal = patch.totalAmount ?? existing.totalAmount;
-      if (patch.status === 'REVIEWED' && finalTotal == null) {
-        throw new BadRequestError('Cannot mark as reviewed without a total amount');
       }
 
       const { items, ...fields } = patch;
@@ -142,8 +140,11 @@ export function createInvoicesService({ extractor, fileStorage, approverResolver
       if (!canEdit(invoice, actor)) {
         throw new BadRequestError('Only the person who submitted this invoice can submit it for approval');
       }
-      if (invoice.status !== 'REVIEWED') {
-        throw new BadRequestError('Invoice must be reviewed before it can be submitted for approval');
+      if (!['EXTRACTED', 'FAILED', 'REJECTED'].includes(invoice.status)) {
+        throw new BadRequestError('This invoice has already been submitted');
+      }
+      if (invoice.totalAmount == null) {
+        throw new BadRequestError('Cannot submit without a total amount');
       }
 
       // Route to the actual submitter's manager, even if an admin is doing this on their behalf.

@@ -7,7 +7,6 @@ import { StatusPill } from '../components/StatusPill';
 const STATUS_TABS: { label: string; value: InvoiceStatus | 'ALL' }[] = [
   { label: 'All', value: 'ALL' },
   { label: 'To review', value: 'EXTRACTED' },
-  { label: 'Reviewed', value: 'REVIEWED' },
   { label: 'Pending approval', value: 'SUBMITTED' },
   { label: 'Approved', value: 'APPROVED' },
   { label: 'Rejected', value: 'REJECTED' },
@@ -145,6 +144,14 @@ export function InvoiceListPage() {
         <>
           <div className="invoice-table-wrap">
             <table className="invoice-table">
+              <colgroup>
+                <col className="col-vendor" />
+                <col className="col-invoice-num" />
+                <col className="col-date" />
+                <col className="col-category" />
+                <col className="col-amount" />
+                <col className="col-status" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Vendor</th>
@@ -160,7 +167,9 @@ export function InvoiceListPage() {
                   <tr key={invoice.id} onClick={() => navigate(`/invoices/${invoice.id}`)}>
                     <td>
                       <span className="vendor-cell">
-                        {invoice.vendorName || 'Unknown vendor'}
+                        <span className="vendor-name" title={invoice.vendorName || 'Unknown vendor'}>
+                          {invoice.vendorName || 'Unknown vendor'}
+                        </span>
                         {invoice.isDuplicate && (
                           <span className="dup-flag" title="Possible duplicate of an existing invoice">
                             ⚠ duplicate

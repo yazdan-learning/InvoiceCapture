@@ -5,7 +5,6 @@ const STATUS_CONFIG: Record<InvoiceStatus, { label: string; className: string }>
   PROCESSING: { label: 'Processing', className: 'status-pill--processing' },
   EXTRACTED: { label: 'To review', className: 'status-pill--extracted' },
   FAILED: { label: 'Failed', className: 'status-pill--failed' },
-  REVIEWED: { label: 'Reviewed', className: 'status-pill--reviewed' },
   SUBMITTED: { label: 'Pending approval', className: 'status-pill--submitted' },
   APPROVED: { label: 'Approved', className: 'status-pill--approved' },
   REJECTED: { label: 'Rejected', className: 'status-pill--rejected' }

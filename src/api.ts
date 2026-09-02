@@ -125,7 +125,6 @@ export type UpdateInvoicePayload = Partial<{
   paymentTerms: string | null;
   notes: string | null;
   categoryId: string | null;
-  status: 'EXTRACTED' | 'REVIEWED';
 }>;
 
 export async function updateInvoice(
