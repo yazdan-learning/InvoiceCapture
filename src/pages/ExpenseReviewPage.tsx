@@ -1,16 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   decideExpense,
   getCategories,
   getExpense,
   getExpenseFileBlobUrl,
+  getMileageRate,
   previewMileageDistance,
   submitExpense,
   updateExpense
 } from '../api';
 import { Category, Expense } from '../types';
 import { StatusPill } from '../components/StatusPill';
+import { LocationAutocompleteInput } from '../components/LocationAutocompleteInput';
+import { RouteMap } from '../components/RouteMap';
+import { isGoogleMapsConfigured } from '../lib/googleMaps';
 import { useAuth } from '../auth/AuthContext';
 
 type FormState = {
@@ -107,6 +111,9 @@ export function ExpenseReviewPage() {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [calculatingDistance, setCalculatingDistance] = useState(false);
   const [distanceError, setDistanceError] = useState<string | null>(null);
+  const [routeQuery, setRouteQuery] = useState<{ from: string; to: string } | null>(null);
+  const [ratePerKm, setRatePerKm] = useState<number | null>(null);
+  const lastCalculatedRef = useRef<{ from: string; to: string } | null>(null);
 
   const load = () => {
     if (!id) return;
@@ -116,6 +123,13 @@ export function ExpenseReviewPage() {
         setExpense(inv);
         setForm(toFormState(inv));
         setCategories(cats);
+        if (inv.expenseType === 'MILEAGE' && inv.mileageFrom && inv.mileageTo) {
+          setRouteQuery({ from: inv.mileageFrom, to: inv.mileageTo });
+          lastCalculatedRef.current = { from: inv.mileageFrom, to: inv.mileageTo };
+        }
+        if (inv.expenseType === 'MILEAGE') {
+          getMileageRate().then((r) => setRatePerKm(r.ratePerKm)).catch(() => setRatePerKm(null));
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expense'))
       .finally(() => setLoading(false));
@@ -183,18 +197,31 @@ export function ExpenseReviewPage() {
     };
   };
 
-  const handleCalculateDistance = async () => {
-    if (!form || !form.mileageFrom.trim() || !form.mileageTo.trim()) return;
+  // Runs automatically whenever both locations are known — picking a place
+  // from autocomplete, or just leaving the field after typing a custom
+  // address. The dedupe guard stops a blur that follows a selection (or a
+  // second blur with unchanged text) from re-firing the same lookup.
+  const runCalculate = async (fromValue: string, toValue: string) => {
+    if (!fromValue.trim() || !toValue.trim()) return;
+    if (lastCalculatedRef.current?.from === fromValue && lastCalculatedRef.current?.to === toValue) return;
+    lastCalculatedRef.current = { from: fromValue, to: toValue };
     setCalculatingDistance(true);
     setDistanceError(null);
+    setRouteQuery({ from: fromValue, to: toValue });
     try {
-      const result = await previewMileageDistance(form.mileageFrom.trim(), form.mileageTo.trim());
+      const result = await previewMileageDistance(fromValue.trim(), toValue.trim());
       updateField('mileageDistanceKm', result.distanceKm.toFixed(1));
     } catch (err) {
       setDistanceError(err instanceof Error ? err.message : 'Could not calculate distance');
     } finally {
       setCalculatingDistance(false);
     }
+  };
+
+  const retryCalculate = () => {
+    if (!form) return;
+    lastCalculatedRef.current = null;
+    runCalculate(form.mileageFrom, form.mileageTo);
   };
 
   const handleSaveDraft = async () => {
@@ -287,6 +314,13 @@ export function ExpenseReviewPage() {
   // saved as a draft, or kicked back with a rejection. Locked everywhere else
   // (waiting on someone else, or already decided).
   const isEditable = ['EXTRACTED', 'FAILED', 'REJECTED'].includes(expense.status) && !isMyApproval;
+
+  // Live preview from the current (possibly unsaved) form values — reflects
+  // edits immediately instead of showing the stale last-saved totalAmount.
+  const estimatedAmount =
+    isMileage && ratePerKm != null && form.mileageDistanceKm.trim() !== ''
+      ? Number(form.mileageDistanceKm) * (form.mileageRoundTrip ? 2 : 1) * ratePerKm
+      : null;
 
   const actionBar = (
     <>
@@ -448,30 +482,34 @@ export function ExpenseReviewPage() {
                 </label>
                 <label className="form-field">
                   <span>From</span>
-                  <input value={form.mileageFrom} onChange={(e) => updateField('mileageFrom', e.target.value)} />
+                  <LocationAutocompleteInput
+                    key={expense.id}
+                    defaultValue={form.mileageFrom}
+                    onChange={(value) => updateField('mileageFrom', value)}
+                    onPlaceSelected={(address) => runCalculate(address, form.mileageTo)}
+                    placeholder={isGoogleMapsConfigured() ? 'Start typing an address…' : undefined}
+                    disabled={!isEditable}
+                  />
                 </label>
                 <label className="form-field">
                   <span>To</span>
-                  <input value={form.mileageTo} onChange={(e) => updateField('mileageTo', e.target.value)} />
+                  <LocationAutocompleteInput
+                    key={expense.id}
+                    defaultValue={form.mileageTo}
+                    onChange={(value) => updateField('mileageTo', value)}
+                    onPlaceSelected={(address) => runCalculate(form.mileageFrom, address)}
+                    placeholder={isGoogleMapsConfigured() ? 'Start typing an address…' : undefined}
+                    disabled={!isEditable}
+                  />
                 </label>
                 <label className="form-field">
-                  <span>Distance (km)</span>
-                  <div className="distance-input-row">
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={form.mileageDistanceKm}
-                      onChange={(e) => updateField('mileageDistanceKm', e.target.value)}
-                    />
-                    <button
-                      className="button-outline"
-                      type="button"
-                      disabled={calculatingDistance || !form.mileageFrom.trim() || !form.mileageTo.trim()}
-                      onClick={handleCalculateDistance}
-                    >
-                      {calculatingDistance ? 'Calculating…' : 'Calculate'}
-                    </button>
-                  </div>
+                  <span>Distance (km){calculatingDistance ? ' — calculating…' : ''}</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={form.mileageDistanceKm}
+                    onChange={(e) => updateField('mileageDistanceKm', e.target.value)}
+                  />
                 </label>
                 <label className="form-field form-field--checkbox">
                   <input
@@ -485,8 +523,14 @@ export function ExpenseReviewPage() {
               {distanceError && (
                 <div className="alert alert-error alert-inline">
                   <span>{distanceError}</span>
+                  {form.mileageFrom.trim() && form.mileageTo.trim() && (
+                    <button className="alert-action" type="button" onClick={retryCalculate}>
+                      Retry
+                    </button>
+                  )}
                 </div>
               )}
+              <RouteMap origin={routeQuery?.from ?? ''} destination={routeQuery?.to ?? ''} />
             </div>
 
             <div className="form-section">
@@ -505,7 +549,10 @@ export function ExpenseReviewPage() {
                 </label>
                 <label className="form-field">
                   <span>Total (calculated automatically)</span>
-                  <input value={expense.totalAmount ?? '—'} disabled />
+                  <input
+                    value={estimatedAmount != null ? estimatedAmount.toFixed(2) : (expense.totalAmount ?? '—')}
+                    disabled
+                  />
                 </label>
               </div>
             </div>

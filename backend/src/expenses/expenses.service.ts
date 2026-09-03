@@ -150,6 +150,13 @@ export function createExpensesService({ extractor, fileStorage, approverResolver
       return resolveDistance(from, to);
     },
 
+    // Lets the frontend show a live "this trip will reimburse ~X" estimate
+    // before saving — the actual totalAmount is still always recomputed
+    // server-side from this same rate, never trusted from the client.
+    async getMileageRate(organizationId: string) {
+      return { ratePerKm: await expensesRepository.getOrganizationMileageRate(organizationId) };
+    },
+
     async list(organizationId: string, filters: ListExpensesQuery, actor: Actor) {
       const scoped = actor.role === 'ADMIN' ? filters : { ...filters, uploadedBy: actor.userId };
       const [expenses, total] = await expensesRepository.list(organizationId, scoped);

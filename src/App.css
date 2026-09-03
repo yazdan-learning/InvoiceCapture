@@ -325,6 +325,31 @@ h1 {
   justify-content: flex-end;
 }
 
+.action-bar--with-total {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.estimated-total {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.estimated-total-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.estimated-total-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
 /* Buttons */
 .button-primary {
   background: #3b82f6;
@@ -1202,22 +1227,33 @@ h1 {
   max-width: 640px;
 }
 
-.distance-input-row {
-  display: flex;
-  gap: 8px;
-}
-
-.distance-input-row input {
-  flex: 1;
-  min-width: 0;
-}
-
-.distance-input-row .button-outline {
-  white-space: nowrap;
-}
-
 .alert-inline {
   margin: 12px 0 0;
+}
+
+.alert-action {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  color: inherit;
+  cursor: pointer;
+}
+
+.route-map-wrap {
+  margin-top: 14px;
+}
+
+.route-map {
+  width: 100%;
+  height: 220px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
 }
 
 @media (max-width: 900px) {

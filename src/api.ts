@@ -188,6 +188,11 @@ export async function previewMileageDistance(
   return parseJsonOrThrow(response);
 }
 
+export async function getMileageRate(apiBaseUrl = defaultBaseUrl): Promise<{ ratePerKm: number }> {
+  const response = await fetch(apiUrl('/api/expenses/mileage/rate', apiBaseUrl), { headers: authHeaders() });
+  return parseJsonOrThrow(response);
+}
+
 export async function getCategories(apiBaseUrl = defaultBaseUrl): Promise<Category[]> {
   const response = await fetch(apiUrl('/api/categories', apiBaseUrl), { headers: authHeaders() });
   return parseJsonOrThrow(response);

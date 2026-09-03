@@ -121,6 +121,16 @@ VITE_API_BASE_URL=http://localhost:5678
 VITE_API_BASE_URL=https://your-n8n-server.com
 ```
 
+### Mileage map (optional)
+
+Set `VITE_GOOGLE_MAPS_API_KEY` in `.env` to enable Places autocomplete and a visual
+route map on the mileage entry/review forms. Requires the **Maps JavaScript API**
+and **Places API** enabled on the Google Cloud project the key belongs to. Without
+it, the From/To fields fall back to plain text input and no map renders — nothing
+else in the app depends on this key. This is separate from the backend's
+`GOOGLE_DIRECTIONS_API_KEY` (see `backend/README.md`), which powers the numeric
+distance calculation; the two can be set independently.
+
 ### Expected n8n Webhook Format
 
 The app expects a webhook at:
