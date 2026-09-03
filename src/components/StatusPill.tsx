@@ -1,6 +1,6 @@
-import { InvoiceStatus } from '../types';
+import { ExpenseStatus } from '../types';
 
-const STATUS_CONFIG: Record<InvoiceStatus, { label: string; className: string }> = {
+const STATUS_CONFIG: Record<ExpenseStatus, { label: string; className: string }> = {
   PENDING: { label: 'Pending', className: 'status-pill--pending' },
   PROCESSING: { label: 'Processing', className: 'status-pill--processing' },
   EXTRACTED: { label: 'To review', className: 'status-pill--extracted' },
@@ -10,7 +10,7 @@ const STATUS_CONFIG: Record<InvoiceStatus, { label: string; className: string }>
   REJECTED: { label: 'Rejected', className: 'status-pill--rejected' }
 };
 
-export function StatusPill({ status }: { status: InvoiceStatus }) {
+export function StatusPill({ status }: { status: ExpenseStatus }) {
   const config = STATUS_CONFIG[status];
   return <span className={`status-pill ${config.className}`}>{config.label}</span>;
 }

@@ -32,7 +32,7 @@ export function AdminUsersPage() {
 
   const usersById = new Map(users.map((u) => [u.id, u]));
   // Only users who can actually be routed to as an approver — matches the
-  // backend guard in invoices.service.ts submitForApproval.
+  // backend guard in expenses.service.ts submitForApproval.
   const possibleManagers = users.filter((u) => u.role !== 'EMPLOYEE');
 
   const handleSubmit = async (e: FormEvent) => {

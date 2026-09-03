@@ -11,7 +11,7 @@ export function IconDashboard({ className }: IconProps) {
   );
 }
 
-export function IconInvoices({ className }: IconProps) {
+export function IconExpenses({ className }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path

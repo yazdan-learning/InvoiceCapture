@@ -1,38 +1,38 @@
 import { Request, Response } from 'express';
-import { InvoiceStatus } from '@prisma/client';
-import { InvoicesService } from './invoices.service';
+import { ExpenseStatus } from '@prisma/client';
+import { ExpensesService } from './expenses.service';
 import { BadRequestError } from '../shared/errors';
 
-export function createInvoicesController(invoicesService: InvoicesService) {
+export function createExpensesController(expensesService: ExpensesService) {
   return {
     async upload(req: Request, res: Response) {
       if (!req.file) throw new BadRequestError('No file uploaded (expected field name: file)');
-      const invoice = await invoicesService.uploadAndExtract(
+      const expense = await expensesService.uploadAndExtract(
         req.actor.organizationId,
         req.actor.userId,
         req.file
       );
-      res.status(201).json(invoice);
+      res.status(201).json(expense);
     },
 
     async list(req: Request, res: Response) {
       const query = req.query as unknown as {
-        status?: InvoiceStatus;
+        status?: ExpenseStatus;
         search?: string;
         page: number;
         pageSize: number;
       };
-      const result = await invoicesService.list(req.actor.organizationId, query, req.actor);
+      const result = await expensesService.list(req.actor.organizationId, query, req.actor);
       res.json(result);
     },
 
     async getById(req: Request, res: Response) {
-      const invoice = await invoicesService.getById(req.actor.organizationId, req.params.id, req.actor);
-      res.json(invoice);
+      const expense = await expensesService.getById(req.actor.organizationId, req.params.id, req.actor);
+      res.json(expense);
     },
 
     async getFile(req: Request, res: Response) {
-      const { buffer, mimeType } = await invoicesService.getFile(
+      const { buffer, mimeType } = await expensesService.getFile(
         req.actor.organizationId,
         req.params.id,
         req.actor
@@ -42,48 +42,48 @@ export function createInvoicesController(invoicesService: InvoicesService) {
     },
 
     async update(req: Request, res: Response) {
-      const invoice = await invoicesService.update(req.actor.organizationId, req.params.id, req.body, req.actor);
-      res.json(invoice);
+      const expense = await expensesService.update(req.actor.organizationId, req.params.id, req.body, req.actor);
+      res.json(expense);
     },
 
     async exportCsv(req: Request, res: Response) {
-      const { status } = req.query as { status?: InvoiceStatus };
-      const csv = await invoicesService.exportCsv(req.actor.organizationId, status, req.actor);
+      const { status } = req.query as { status?: ExpenseStatus };
+      const csv = await expensesService.exportCsv(req.actor.organizationId, status, req.actor);
       res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="invoices.csv"');
+      res.setHeader('Content-Disposition', 'attachment; filename="expenses.csv"');
       res.send(csv);
     },
 
     async submit(req: Request, res: Response) {
-      const invoice = await invoicesService.submitForApproval(req.actor.organizationId, req.params.id, req.actor);
-      res.json(invoice);
+      const expense = await expensesService.submitForApproval(req.actor.organizationId, req.params.id, req.actor);
+      res.json(expense);
     },
 
     async approve(req: Request, res: Response) {
-      const invoice = await invoicesService.decide(
+      const expense = await expensesService.decide(
         req.actor.organizationId,
         req.params.id,
         req.actor.userId,
         'APPROVED',
         req.body?.comment ?? null
       );
-      res.json(invoice);
+      res.json(expense);
     },
 
     async reject(req: Request, res: Response) {
-      const invoice = await invoicesService.decide(
+      const expense = await expensesService.decide(
         req.actor.organizationId,
         req.params.id,
         req.actor.userId,
         'REJECTED',
         req.body?.comment ?? null
       );
-      res.json(invoice);
+      res.json(expense);
     },
 
     async approvalQueue(req: Request, res: Response) {
-      const invoices = await invoicesService.getApprovalQueue(req.actor.organizationId, req.actor.userId);
-      res.json({ invoices });
+      const expenses = await expensesService.getApprovalQueue(req.actor.organizationId, req.actor.userId);
+      res.json({ expenses });
     }
   };
 }

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { downloadInvoicesExport, listInvoices } from '../api';
-import { Invoice, InvoiceStatus } from '../types';
+import { downloadExpensesExport, listExpenses } from '../api';
+import { Expense, ExpenseStatus } from '../types';
 import { StatusPill } from '../components/StatusPill';
 
-const STATUS_TABS: { label: string; value: InvoiceStatus | 'ALL' }[] = [
+const STATUS_TABS: { label: string; value: ExpenseStatus | 'ALL' }[] = [
   { label: 'All', value: 'ALL' },
   { label: 'To review', value: 'EXTRACTED' },
   { label: 'Pending approval', value: 'SUBMITTED' },
@@ -30,15 +30,15 @@ function formatDate(date: string | null) {
   return new Date(date).toLocaleDateString();
 }
 
-export function InvoiceListPage() {
+export function ExpenseListPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialStatus = searchParams.get('status');
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'ALL'>(
-    initialStatus && VALID_STATUSES.has(initialStatus as InvoiceStatus) ? (initialStatus as InvoiceStatus) : 'ALL'
+  const [statusFilter, setStatusFilter] = useState<ExpenseStatus | 'ALL'>(
+    initialStatus && VALID_STATUSES.has(initialStatus as ExpenseStatus) ? (initialStatus as ExpenseStatus) : 'ALL'
   );
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -49,16 +49,16 @@ export function InvoiceListPage() {
     setLoading(true);
     setError(null);
     try {
-      const result = await listInvoices({
+      const result = await listExpenses({
         status: statusFilter === 'ALL' ? undefined : statusFilter,
         search: search || undefined,
         page,
         pageSize: PAGE_SIZE
       });
-      setInvoices(result.invoices);
+      setExpenses(result.expenses);
       setTotal(result.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load invoices');
+      setError(err instanceof Error ? err.message : 'Failed to load expenses');
     } finally {
       setLoading(false);
     }
@@ -76,7 +76,7 @@ export function InvoiceListPage() {
     return () => clearTimeout(timeout);
   }, [searchInput]);
 
-  const selectStatus = (value: InvoiceStatus | 'ALL') => {
+  const selectStatus = (value: ExpenseStatus | 'ALL') => {
     setStatusFilter(value);
     setPage(1);
     setSearchParams(value === 'ALL' ? {} : { status: value });
@@ -111,7 +111,7 @@ export function InvoiceListPage() {
             className="button-outline"
             type="button"
             onClick={() =>
-              downloadInvoicesExport(statusFilter === 'ALL' ? undefined : statusFilter).catch((err) =>
+              downloadExpensesExport(statusFilter === 'ALL' ? undefined : statusFilter).catch((err) =>
                 setError(err instanceof Error ? err.message : 'Export failed')
               )
             }
@@ -131,10 +131,10 @@ export function InvoiceListPage() {
       )}
 
       {loading ? (
-        <div className="list-loading">Loading invoices…</div>
-      ) : invoices.length === 0 ? (
+        <div className="list-loading">Loading expenses…</div>
+      ) : expenses.length === 0 ? (
         <div className="empty-state">
-          <h3>No invoices yet</h3>
+          <h3>No expenses yet</h3>
           <p>Upload your first invoice to get started.</p>
           <Link className="button-primary" to="/upload">
             + Upload Invoice
@@ -163,26 +163,26 @@ export function InvoiceListPage() {
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((invoice) => (
-                  <tr key={invoice.id} onClick={() => navigate(`/invoices/${invoice.id}`)}>
+                {expenses.map((expense) => (
+                  <tr key={expense.id} onClick={() => navigate(`/expenses/${expense.id}`)}>
                     <td>
                       <span className="vendor-cell">
-                        <span className="vendor-name" title={invoice.vendorName || 'Unknown vendor'}>
-                          {invoice.vendorName || 'Unknown vendor'}
+                        <span className="vendor-name" title={expense.vendorName || 'Unknown vendor'}>
+                          {expense.vendorName || 'Unknown vendor'}
                         </span>
-                        {invoice.isDuplicate && (
+                        {expense.isDuplicate && (
                           <span className="dup-flag" title="Possible duplicate of an existing invoice">
                             ⚠ duplicate
                           </span>
                         )}
                       </span>
                     </td>
-                    <td>{invoice.invoiceNumber || '—'}</td>
-                    <td>{formatDate(invoice.invoiceDate)}</td>
-                    <td>{invoice.category?.name || '—'}</td>
-                    <td className="align-right amount-cell">{formatAmount(invoice.totalAmount, invoice.currency)}</td>
+                    <td>{expense.invoiceNumber || '—'}</td>
+                    <td>{formatDate(expense.invoiceDate)}</td>
+                    <td>{expense.category?.name || '—'}</td>
+                    <td className="align-right amount-cell">{formatAmount(expense.totalAmount, expense.currency)}</td>
                     <td>
-                      <StatusPill status={invoice.status} />
+                      <StatusPill status={expense.status} />
                     </td>
                   </tr>
                 ))}
@@ -191,17 +191,17 @@ export function InvoiceListPage() {
           </div>
 
           <div className="invoice-cards">
-            {invoices.map((invoice) => (
-              <div key={invoice.id} className="invoice-card" onClick={() => navigate(`/invoices/${invoice.id}`)}>
+            {expenses.map((expense) => (
+              <div key={expense.id} className="invoice-card" onClick={() => navigate(`/expenses/${expense.id}`)}>
                 <div className="invoice-card-top">
-                  <span className="invoice-card-vendor">{invoice.vendorName || 'Unknown vendor'}</span>
-                  <StatusPill status={invoice.status} />
+                  <span className="invoice-card-vendor">{expense.vendorName || 'Unknown vendor'}</span>
+                  <StatusPill status={expense.status} />
                 </div>
-                <div className="invoice-card-amount">{formatAmount(invoice.totalAmount, invoice.currency)}</div>
+                <div className="invoice-card-amount">{formatAmount(expense.totalAmount, expense.currency)}</div>
                 <div className="invoice-card-meta">
-                  <span>{formatDate(invoice.invoiceDate)}</span>
-                  {invoice.category && <span>{invoice.category.name}</span>}
-                  {invoice.isDuplicate && <span className="dup-flag">⚠ duplicate</span>}
+                  <span>{formatDate(expense.invoiceDate)}</span>
+                  {expense.category && <span>{expense.category.name}</span>}
+                  {expense.isDuplicate && <span className="dup-flag">⚠ duplicate</span>}
                 </div>
               </div>
             ))}

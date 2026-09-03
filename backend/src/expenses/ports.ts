@@ -49,7 +49,7 @@ export interface InvoiceExtractor {
 }
 
 export interface FileStorage {
-  save(params: { organizationId: string; invoiceId: string; file: UploadedFile }): Promise<string>;
+  save(params: { organizationId: string; expenseId: string; file: UploadedFile }): Promise<string>;
   read(storedPath: string): Promise<Buffer>;
 }
 
@@ -60,7 +60,7 @@ export type Approver = {
 
 // The one thing this module needs from auth: who does this person report to,
 // and can that person actually approve. The auth module's authService satisfies
-// this structurally — invoices never imports anything else from auth, which is
+// this structurally — expenses never imports anything else from auth, which is
 // what keeps it extractable later.
 export interface ApproverResolver {
   getApprover(userId: string): Promise<Approver | null>;

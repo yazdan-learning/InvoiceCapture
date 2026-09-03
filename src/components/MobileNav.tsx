@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { AuthUser } from '../types';
-import { IconAdmin, IconApprovals, IconDashboard, IconInvoices, IconLogout, IconUpload } from './icons';
+import { IconAdmin, IconApprovals, IconDashboard, IconExpenses, IconLogout, IconUpload } from './icons';
 
 export function MobileTopBar({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const [open, setOpen] = useState(false);
 
   return (
     <div className="mobile-topbar">
-      <span className="mobile-topbar-title">Invoice Capture</span>
+      <span className="mobile-topbar-title">Expense Manager</span>
       <div className="mobile-user-menu">
         <button
           className="mobile-user-avatar"
@@ -51,8 +51,8 @@ export function MobileTopBar({ user, onLogout }: { user: AuthUser; onLogout: () 
 
 export function MobileBottomNav({ user }: { user: AuthUser }) {
   const location = useLocation();
-  const isInvoicesActive =
-    location.pathname === '/invoices' || location.pathname.startsWith('/invoices/');
+  const isExpensesActive =
+    location.pathname === '/expenses' || location.pathname.startsWith('/expenses/');
 
   // Tabs keep their natural width and cluster together at the center of the
   // bar (fixed gap, no flex-grow) instead of stretching to fill it — that's
@@ -69,9 +69,9 @@ export function MobileBottomNav({ user }: { user: AuthUser }) {
         <IconUpload className="mobile-tab-icon" />
         <span>Upload</span>
       </Link>
-      <Link to="/invoices" className={`mobile-tab ${isInvoicesActive ? 'mobile-tab--active' : ''}`}>
-        <IconInvoices className="mobile-tab-icon" />
-        <span>Invoices</span>
+      <Link to="/expenses" className={`mobile-tab ${isExpensesActive ? 'mobile-tab--active' : ''}`}>
+        <IconExpenses className="mobile-tab-icon" />
+        <span>Expenses</span>
       </Link>
       {user.role !== 'EMPLOYEE' && (
         <Link

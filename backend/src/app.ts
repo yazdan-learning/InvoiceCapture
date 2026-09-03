@@ -4,7 +4,7 @@ import multer from 'multer';
 import { env } from './config/env';
 import { authRouter } from './auth/auth.routes';
 import { requireAuth } from './auth/auth.middleware';
-import { invoicesRouter } from './invoices/invoices.routes';
+import { expensesRouter } from './expenses/expenses.routes';
 import { categoriesRouter } from './categories/categories.routes';
 import { AppError } from './shared/errors';
 
@@ -18,7 +18,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 // /api/auth/login is public; every other route in that router applies
 // requireAuth (and requireRole where needed) itself.
 app.use('/api/auth', authRouter);
-app.use('/api/invoices', requireAuth, invoicesRouter);
+app.use('/api/expenses', requireAuth, expensesRouter);
 app.use('/api/categories', requireAuth, categoriesRouter);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {

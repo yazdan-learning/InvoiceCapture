@@ -1,9 +1,9 @@
 import { ReactElement } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { DashboardPage } from './pages/DashboardPage';
-import { InvoiceListPage } from './pages/InvoiceListPage';
+import { ExpenseListPage } from './pages/ExpenseListPage';
 import { UploadPage } from './pages/UploadPage';
-import { InvoiceReviewPage } from './pages/InvoiceReviewPage';
+import { ExpenseReviewPage } from './pages/ExpenseReviewPage';
 import { LoginPage } from './pages/LoginPage';
 import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
@@ -43,10 +43,10 @@ function App() {
         }
       />
       <Route
-        path="/invoices"
+        path="/expenses"
         element={
           <Protected>
-            <InvoiceListPage />
+            <ExpenseListPage />
           </Protected>
         }
       />
@@ -59,10 +59,10 @@ function App() {
         }
       />
       <Route
-        path="/invoices/:id"
+        path="/expenses/:id"
         element={
           <Protected>
-            <InvoiceReviewPage />
+            <ExpenseReviewPage />
           </Protected>
         }
       />

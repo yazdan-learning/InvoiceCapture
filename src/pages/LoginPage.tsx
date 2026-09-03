@@ -33,7 +33,7 @@ export function LoginPage() {
   return (
     <div className="login-card">
       <h2>Sign in</h2>
-      <p className="login-subtitle">Access your organization's invoices</p>
+      <p className="login-subtitle">Access your organization's expenses</p>
       <form onSubmit={handleSubmit} className="login-form">
         <label className="form-field">
           <span>Email</span>

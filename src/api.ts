@@ -1,4 +1,4 @@
-import { AuthUser, Category, ExtractResponse, Invoice, InvoiceStatus, Role, UserSummary } from './types';
+import { AuthUser, Category, Expense, ExpenseStatus, ExtractResponse, Role, UserSummary } from './types';
 import { clearSession, getToken } from './auth/token-storage';
 
 export const defaultBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4300';
@@ -38,18 +38,21 @@ export async function login(email: string, password: string, apiBaseUrl = defaul
   return parseJsonOrThrow(response);
 }
 
-type ExtractParams = {
+type UploadReceiptParams = {
   file: File;
   apiBaseUrl?: string;
 };
 
 // The FE used to call the n8n webhook directly. It now calls our backend, which
-// calls n8n itself, persists the result, and returns the saved Invoice record.
-export async function extractInvoice({ file, apiBaseUrl = defaultBaseUrl }: ExtractParams): Promise<ExtractResponse> {
+// calls n8n itself, persists the result, and returns the saved Expense record.
+export async function uploadReceipt({
+  file,
+  apiBaseUrl = defaultBaseUrl
+}: UploadReceiptParams): Promise<ExtractResponse> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(apiUrl('/api/invoices', apiBaseUrl), {
+  const response = await fetch(apiUrl('/api/expenses', apiBaseUrl), {
     method: 'POST',
     headers: authHeaders(),
     body: formData
@@ -64,31 +67,31 @@ export async function extractInvoice({ file, apiBaseUrl = defaultBaseUrl }: Extr
     throw new Error(body?.error || `Request failed with status ${response.status}`);
   }
 
-  const invoice = (await response.json()) as Invoice;
+  const expense = (await response.json()) as Expense;
   return {
-    success: invoice.status !== 'FAILED',
-    message: invoice.status === 'FAILED' ? invoice.errorMessage ?? 'Extraction failed' : 'Invoice processed',
-    timestamp: invoice.createdAt,
-    data: invoice
+    success: expense.status !== 'FAILED',
+    message: expense.status === 'FAILED' ? expense.errorMessage ?? 'Extraction failed' : 'Invoice processed',
+    timestamp: expense.createdAt,
+    data: expense
   };
 }
 
-export type ListInvoicesParams = {
-  status?: InvoiceStatus;
+export type ListExpensesParams = {
+  status?: ExpenseStatus;
   search?: string;
   page?: number;
   pageSize?: number;
   apiBaseUrl?: string;
 };
 
-export type ListInvoicesResponse = {
-  invoices: Invoice[];
+export type ListExpensesResponse = {
+  expenses: Expense[];
   total: number;
   page: number;
   pageSize: number;
 };
 
-export async function listInvoices(params: ListInvoicesParams = {}): Promise<ListInvoicesResponse> {
+export async function listExpenses(params: ListExpensesParams = {}): Promise<ListExpensesResponse> {
   const { apiBaseUrl = defaultBaseUrl, ...query } = params;
   const search = new URLSearchParams();
   if (query.status) search.set('status', query.status);
@@ -96,18 +99,18 @@ export async function listInvoices(params: ListInvoicesParams = {}): Promise<Lis
   if (query.page) search.set('page', String(query.page));
   if (query.pageSize) search.set('pageSize', String(query.pageSize));
 
-  const response = await fetch(apiUrl(`/api/invoices?${search.toString()}`, apiBaseUrl), {
+  const response = await fetch(apiUrl(`/api/expenses?${search.toString()}`, apiBaseUrl), {
     headers: authHeaders()
   });
   return parseJsonOrThrow(response);
 }
 
-export async function getInvoice(id: string, apiBaseUrl = defaultBaseUrl): Promise<Invoice> {
-  const response = await fetch(apiUrl(`/api/invoices/${id}`, apiBaseUrl), { headers: authHeaders() });
+export async function getExpense(id: string, apiBaseUrl = defaultBaseUrl): Promise<Expense> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}`, apiBaseUrl), { headers: authHeaders() });
   return parseJsonOrThrow(response);
 }
 
-export type UpdateInvoicePayload = Partial<{
+export type UpdateExpensePayload = Partial<{
   invoiceNumber: string | null;
   invoiceDate: string | null;
   dueDate: string | null;
@@ -127,12 +130,12 @@ export type UpdateInvoicePayload = Partial<{
   categoryId: string | null;
 }>;
 
-export async function updateInvoice(
+export async function updateExpense(
   id: string,
-  payload: UpdateInvoicePayload,
+  payload: UpdateExpensePayload,
   apiBaseUrl = defaultBaseUrl
-): Promise<Invoice> {
-  const response = await fetch(apiUrl(`/api/invoices/${id}`, apiBaseUrl), {
+): Promise<Expense> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}`, apiBaseUrl), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(payload)
@@ -149,8 +152,8 @@ export async function getCategories(apiBaseUrl = defaultBaseUrl): Promise<Catego
 // these routes require auth — so both fetch as an authenticated blob instead of
 // returning a directly-linkable URL.
 
-export async function getInvoiceFileBlobUrl(id: string, apiBaseUrl = defaultBaseUrl): Promise<string> {
-  const response = await fetch(apiUrl(`/api/invoices/${id}/file`, apiBaseUrl), { headers: authHeaders() });
+export async function getExpenseFileBlobUrl(id: string, apiBaseUrl = defaultBaseUrl): Promise<string> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}/file`, apiBaseUrl), { headers: authHeaders() });
   if (!response.ok) {
     if (response.status === 401) {
       clearSession();
@@ -162,9 +165,9 @@ export async function getInvoiceFileBlobUrl(id: string, apiBaseUrl = defaultBase
   return URL.createObjectURL(blob);
 }
 
-export async function downloadInvoicesExport(status?: InvoiceStatus, apiBaseUrl = defaultBaseUrl): Promise<void> {
+export async function downloadExpensesExport(status?: ExpenseStatus, apiBaseUrl = defaultBaseUrl): Promise<void> {
   const search = status ? `?status=${status}` : '';
-  const response = await fetch(apiUrl(`/api/invoices/export${search}`, apiBaseUrl), { headers: authHeaders() });
+  const response = await fetch(apiUrl(`/api/expenses/export${search}`, apiBaseUrl), { headers: authHeaders() });
   if (!response.ok) {
     if (response.status === 401) {
       clearSession();
@@ -176,28 +179,28 @@ export async function downloadInvoicesExport(status?: InvoiceStatus, apiBaseUrl 
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'invoices.csv';
+  link.download = 'expenses.csv';
   document.body.appendChild(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
 }
 
-export async function submitInvoice(id: string, apiBaseUrl = defaultBaseUrl): Promise<Invoice> {
-  const response = await fetch(apiUrl(`/api/invoices/${id}/submit`, apiBaseUrl), {
+export async function submitExpense(id: string, apiBaseUrl = defaultBaseUrl): Promise<Expense> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}/submit`, apiBaseUrl), {
     method: 'POST',
     headers: authHeaders()
   });
   return parseJsonOrThrow(response);
 }
 
-export async function decideInvoice(
+export async function decideExpense(
   id: string,
   decision: 'approve' | 'reject',
   comment: string | null,
   apiBaseUrl = defaultBaseUrl
-): Promise<Invoice> {
-  const response = await fetch(apiUrl(`/api/invoices/${id}/${decision}`, apiBaseUrl), {
+): Promise<Expense> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}/${decision}`, apiBaseUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ comment })
@@ -205,8 +208,8 @@ export async function decideInvoice(
   return parseJsonOrThrow(response);
 }
 
-export async function getApprovalQueue(apiBaseUrl = defaultBaseUrl): Promise<{ invoices: Invoice[] }> {
-  const response = await fetch(apiUrl('/api/invoices/approvals/queue', apiBaseUrl), { headers: authHeaders() });
+export async function getApprovalQueue(apiBaseUrl = defaultBaseUrl): Promise<{ expenses: Expense[] }> {
+  const response = await fetch(apiUrl('/api/expenses/approvals/queue', apiBaseUrl), { headers: authHeaders() });
   return parseJsonOrThrow(response);
 }
 

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { AuthUser } from '../types';
-import { IconAdmin, IconApprovals, IconDashboard, IconInvoices, IconLogout } from './icons';
+import { IconAdmin, IconApprovals, IconDashboard, IconExpenses, IconLogout } from './icons';
 
 type SidebarProps = {
   user: AuthUser;
@@ -9,7 +9,7 @@ type SidebarProps = {
 };
 
 export function Sidebar({ user, currentPath, onLogout }: SidebarProps) {
-  const isInvoicesActive = currentPath === '/invoices' || currentPath.startsWith('/invoices/') || currentPath === '/upload';
+  const isExpensesActive = currentPath === '/expenses' || currentPath.startsWith('/expenses/') || currentPath === '/upload';
 
   return (
     <aside className="sidebar">
@@ -24,8 +24,8 @@ export function Sidebar({ user, currentPath, onLogout }: SidebarProps) {
           />
         </svg>
         <div>
-          <div className="sidebar-brand-title">Invoice Capture</div>
-          <div className="sidebar-brand-sub">ERP Document Processing</div>
+          <div className="sidebar-brand-title">Expense Manager</div>
+          <div className="sidebar-brand-sub">Receipts &amp; Approvals</div>
         </div>
       </div>
 
@@ -34,9 +34,9 @@ export function Sidebar({ user, currentPath, onLogout }: SidebarProps) {
           <IconDashboard className="sidebar-link-icon" />
           Dashboard
         </Link>
-        <Link to="/invoices" className={`sidebar-link ${isInvoicesActive ? 'sidebar-link--active' : ''}`}>
-          <IconInvoices className="sidebar-link-icon" />
-          Invoices
+        <Link to="/expenses" className={`sidebar-link ${isExpensesActive ? 'sidebar-link--active' : ''}`}>
+          <IconExpenses className="sidebar-link-icon" />
+          Expenses
         </Link>
         {user.role !== 'EMPLOYEE' && (
           <Link to="/approvals" className={`sidebar-link ${currentPath === '/approvals' ? 'sidebar-link--active' : ''}`}>

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { extractInvoice } from '../api';
+import { uploadReceipt } from '../api';
 
 export function UploadPage() {
   const navigate = useNavigate();
@@ -63,9 +63,9 @@ export function UploadPage() {
     setError(null);
 
     try {
-      const response = await extractInvoice({ file });
+      const response = await uploadReceipt({ file });
       if (response.data) {
-        navigate(`/invoices/${response.data.id}`, { state: { justUploaded: true } });
+        navigate(`/expenses/${response.data.id}`, { state: { justUploaded: true } });
       } else {
         throw new Error(response.message || 'Extraction failed');
       }

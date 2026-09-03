@@ -10,17 +10,17 @@ export class LocalDiskFileStorage implements FileStorage {
 
   async save({
     organizationId,
-    invoiceId,
+    expenseId,
     file
   }: {
     organizationId: string;
-    invoiceId: string;
+    expenseId: string;
     file: UploadedFile;
   }): Promise<string> {
     const orgDir = path.join(this.uploadsDir, organizationId);
     await fs.mkdir(orgDir, { recursive: true });
     const ext = path.extname(file.originalname);
-    const relativePath = path.join(organizationId, `${invoiceId}${ext}`);
+    const relativePath = path.join(organizationId, `${expenseId}${ext}`);
     await fs.writeFile(path.join(this.uploadsDir, relativePath), file.buffer);
     return relativePath;
   }

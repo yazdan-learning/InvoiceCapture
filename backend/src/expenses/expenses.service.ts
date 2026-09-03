@@ -1,10 +1,10 @@
 import { randomUUID } from 'crypto';
-import { InvoiceStatus, Prisma } from '@prisma/client';
+import { ExpenseStatus, Prisma } from '@prisma/client';
 import { NotFoundError, BadRequestError } from '../shared/errors';
 import { toCsv } from '../shared/csv';
-import { invoicesRepository, LineItemInput } from './invoices.repository';
+import { expensesRepository, LineItemInput } from './expenses.repository';
 import { ApproverResolver, FileStorage, InvoiceExtractor, UploadedFile } from './ports';
-import { ListInvoicesQuery, UpdateInvoiceInput } from './invoices.schema';
+import { ListExpensesQuery, UpdateExpenseInput } from './expenses.schema';
 
 function toDate(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -14,18 +14,18 @@ function toDate(value: string | null | undefined): Date | null {
 
 export type Actor = { userId: string; role: 'EMPLOYEE' | 'APPROVER' | 'ADMIN' };
 
-// Admins see everything in the org; everyone else only sees invoices they
+// Admins see everything in the org; everyone else only sees expenses they
 // submitted, or ones routed to them as an approver (current or past step).
-function canView(invoice: { uploadedBy: string; approvals: { approverId: string }[] }, actor: Actor): boolean {
+function canView(expense: { uploadedBy: string; approvals: { approverId: string }[] }, actor: Actor): boolean {
   if (actor.role === 'ADMIN') return true;
-  if (invoice.uploadedBy === actor.userId) return true;
-  return invoice.approvals.some((a) => a.approverId === actor.userId);
+  if (expense.uploadedBy === actor.userId) return true;
+  return expense.approvals.some((a) => a.approverId === actor.userId);
 }
 
 // Only the submitter (or an admin) may edit or submit — an approver reviews,
 // they don't get to change the numbers they're approving.
-function canEdit(invoice: { uploadedBy: string }, actor: Actor): boolean {
-  return actor.role === 'ADMIN' || invoice.uploadedBy === actor.userId;
+function canEdit(expense: { uploadedBy: string }, actor: Actor): boolean {
+  return actor.role === 'ADMIN' || expense.uploadedBy === actor.userId;
 }
 
 type Deps = {
@@ -34,11 +34,11 @@ type Deps = {
   approverResolver: ApproverResolver;
 };
 
-export function createInvoicesService({ extractor, fileStorage, approverResolver }: Deps) {
+export function createExpensesService({ extractor, fileStorage, approverResolver }: Deps) {
   return {
     async uploadAndExtract(organizationId: string, userId: string, file: UploadedFile) {
-      const invoiceId = randomUUID();
-      const relativePath = await fileStorage.save({ organizationId, invoiceId, file });
+      const expenseId = randomUUID();
+      const relativePath = await fileStorage.save({ organizationId, expenseId, file });
 
       let extraction: Awaited<ReturnType<InvoiceExtractor['extract']>> | null = null;
       let errorMessage: string | null = null;
@@ -49,11 +49,11 @@ export function createInvoicesService({ extractor, fileStorage, approverResolver
       }
 
       const data = extraction?.success ? extraction.data : undefined;
-      const status: InvoiceStatus = data ? 'EXTRACTED' : 'FAILED';
+      const status: ExpenseStatus = data ? 'EXTRACTED' : 'FAILED';
       const totalAmount = data?.totalAmount ?? null;
 
       const duplicate = data
-        ? await invoicesRepository.findPotentialDuplicate(organizationId, {
+        ? await expensesRepository.findPotentialDuplicate(organizationId, {
             vendorName: data.vendorName,
             invoiceNumber: data.invoiceNumber,
             totalAmount
@@ -68,10 +68,11 @@ export function createInvoicesService({ extractor, fileStorage, approverResolver
         taxRate: item.taxRate ?? null
       }));
 
-      return invoicesRepository.create({
-        id: invoiceId,
+      return expensesRepository.create({
+        id: expenseId,
         organizationId,
         uploadedBy: userId,
+        expenseType: 'RECEIPT',
         filePath: relativePath,
         mimeType: file.mimetype,
         fileSizeB: file.size,
@@ -100,60 +101,61 @@ export function createInvoicesService({ extractor, fileStorage, approverResolver
       });
     },
 
-    async list(organizationId: string, filters: ListInvoicesQuery, actor: Actor) {
+    async list(organizationId: string, filters: ListExpensesQuery, actor: Actor) {
       const scoped = actor.role === 'ADMIN' ? filters : { ...filters, uploadedBy: actor.userId };
-      const [invoices, total] = await invoicesRepository.list(organizationId, scoped);
-      return { invoices, total, page: filters.page, pageSize: filters.pageSize };
+      const [expenses, total] = await expensesRepository.list(organizationId, scoped);
+      return { expenses, total, page: filters.page, pageSize: filters.pageSize };
     },
 
     async getById(organizationId: string, id: string, actor: Actor) {
-      const invoice = await invoicesRepository.findById(organizationId, id);
-      if (!invoice || !canView(invoice, actor)) throw new NotFoundError('Invoice not found');
-      return invoice;
+      const expense = await expensesRepository.findById(organizationId, id);
+      if (!expense || !canView(expense, actor)) throw new NotFoundError('Expense not found');
+      return expense;
     },
 
     async getFile(organizationId: string, id: string, actor: Actor) {
-      const invoice = await invoicesRepository.findById(organizationId, id);
-      if (!invoice || !canView(invoice, actor)) throw new NotFoundError('Invoice not found');
-      const buffer = await fileStorage.read(invoice.filePath);
-      return { buffer, mimeType: invoice.mimeType };
+      const expense = await expensesRepository.findById(organizationId, id);
+      if (!expense || !canView(expense, actor)) throw new NotFoundError('Expense not found');
+      if (!expense.filePath || !expense.mimeType) throw new NotFoundError('This expense has no document attached');
+      const buffer = await fileStorage.read(expense.filePath);
+      return { buffer, mimeType: expense.mimeType };
     },
 
     // Pure field edits — no status transitions here. Every status change has
     // its own dedicated action (submit/approve/reject) so there's exactly one
-    // way to move an invoice forward, not an ambiguous status field on PATCH.
-    async update(organizationId: string, id: string, patch: UpdateInvoiceInput, actor: Actor) {
-      const existing = await invoicesRepository.findById(organizationId, id);
-      if (!existing || !canView(existing, actor)) throw new NotFoundError('Invoice not found');
+    // way to move an expense forward, not an ambiguous status field on PATCH.
+    async update(organizationId: string, id: string, patch: UpdateExpenseInput, actor: Actor) {
+      const existing = await expensesRepository.findById(organizationId, id);
+      if (!existing || !canView(existing, actor)) throw new NotFoundError('Expense not found');
       if (!canEdit(existing, actor)) {
-        throw new BadRequestError('Only the person who submitted this invoice can edit it');
+        throw new BadRequestError('Only the person who submitted this expense can edit it');
       }
 
       const { items, ...fields } = patch;
 
-      return invoicesRepository.update(id, fields as Prisma.InvoiceUpdateInput, items);
+      return expensesRepository.update(id, fields as Prisma.ExpenseUpdateInput, items);
     },
 
     async submitForApproval(organizationId: string, id: string, actor: Actor) {
-      const invoice = await invoicesRepository.findById(organizationId, id);
-      if (!invoice || !canView(invoice, actor)) throw new NotFoundError('Invoice not found');
-      if (!canEdit(invoice, actor)) {
-        throw new BadRequestError('Only the person who submitted this invoice can submit it for approval');
+      const expense = await expensesRepository.findById(organizationId, id);
+      if (!expense || !canView(expense, actor)) throw new NotFoundError('Expense not found');
+      if (!canEdit(expense, actor)) {
+        throw new BadRequestError('Only the person who submitted this expense can submit it for approval');
       }
-      if (!['EXTRACTED', 'FAILED', 'REJECTED'].includes(invoice.status)) {
-        throw new BadRequestError('This invoice has already been submitted');
+      if (!['EXTRACTED', 'FAILED', 'REJECTED'].includes(expense.status)) {
+        throw new BadRequestError('This expense has already been submitted');
       }
-      if (invoice.totalAmount == null) {
+      if (expense.totalAmount == null) {
         throw new BadRequestError('Cannot submit without a total amount');
       }
 
       // Route to the actual submitter's manager, even if an admin is doing this on their behalf.
-      const approver = await approverResolver.getApprover(invoice.uploadedBy);
+      const approver = await approverResolver.getApprover(expense.uploadedBy);
 
       if (!approver) {
         // Nobody above them in the hierarchy — nothing to route to, so they're
         // self-certifying. Matches the solo/small-operator case directly.
-        return invoicesRepository.update(id, { status: 'APPROVED' });
+        return expensesRepository.update(id, { status: 'APPROVED' });
       }
 
       if (approver.role === 'EMPLOYEE') {
@@ -162,8 +164,8 @@ export function createInvoicesService({ extractor, fileStorage, approverResolver
         );
       }
 
-      await invoicesRepository.createApproval({ invoiceId: id, approverId: approver.id, stepOrder: 1 });
-      return invoicesRepository.update(id, { status: 'SUBMITTED' });
+      await expensesRepository.createApproval({ expenseId: id, approverId: approver.id, stepOrder: 1 });
+      return expensesRepository.update(id, { status: 'SUBMITTED' });
     },
 
     async decide(
@@ -173,42 +175,42 @@ export function createInvoicesService({ extractor, fileStorage, approverResolver
       decision: 'APPROVED' | 'REJECTED',
       comment: string | null
     ) {
-      const invoice = await invoicesRepository.findById(organizationId, id);
-      if (!invoice) throw new NotFoundError('Invoice not found');
+      const expense = await expensesRepository.findById(organizationId, id);
+      if (!expense) throw new NotFoundError('Expense not found');
 
-      const pending = await invoicesRepository.findPendingApproval(id);
+      const pending = await expensesRepository.findPendingApproval(id);
       if (!pending || pending.approverId !== approverId) {
-        throw new BadRequestError('You do not have a pending approval for this invoice');
+        throw new BadRequestError('You do not have a pending approval for this expense');
       }
 
-      await invoicesRepository.decideApproval(pending.id, decision, comment);
-      return invoicesRepository.update(id, { status: decision });
+      await expensesRepository.decideApproval(pending.id, decision, comment);
+      return expensesRepository.update(id, { status: decision });
     },
 
     getApprovalQueue(organizationId: string, approverId: string) {
-      return invoicesRepository.listApprovalQueue(organizationId, approverId);
+      return expensesRepository.listApprovalQueue(organizationId, approverId);
     },
 
-    async exportCsv(organizationId: string, status: InvoiceStatus | undefined, actor: Actor) {
+    async exportCsv(organizationId: string, status: ExpenseStatus | undefined, actor: Actor) {
       const uploadedBy = actor.role === 'ADMIN' ? undefined : actor.userId;
-      const invoices = await invoicesRepository.listForExport(organizationId, status, uploadedBy);
+      const expenses = await expensesRepository.listForExport(organizationId, status, uploadedBy);
 
       return toCsv(
         ['Invoice Number', 'Invoice Date', 'Vendor', 'Category', 'Subtotal', 'Tax', 'Total', 'Currency', 'Status'],
-        invoices.map((invoice) => [
-          invoice.invoiceNumber,
-          invoice.invoiceDate ? invoice.invoiceDate.toISOString().slice(0, 10) : null,
-          invoice.vendorName,
-          invoice.category?.name,
-          invoice.subtotal?.toString(),
-          invoice.taxAmount?.toString(),
-          invoice.totalAmount?.toString(),
-          invoice.currency,
-          invoice.status
+        expenses.map((expense) => [
+          expense.invoiceNumber,
+          expense.invoiceDate ? expense.invoiceDate.toISOString().slice(0, 10) : null,
+          expense.vendorName,
+          expense.category?.name,
+          expense.subtotal?.toString(),
+          expense.taxAmount?.toString(),
+          expense.totalAmount?.toString(),
+          expense.currency,
+          expense.status
         ])
       );
     }
   };
 }
 
-export type InvoicesService = ReturnType<typeof createInvoicesService>;
+export type ExpensesService = ReturnType<typeof createExpensesService>;

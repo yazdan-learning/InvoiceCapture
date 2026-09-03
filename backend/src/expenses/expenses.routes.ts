@@ -3,20 +3,20 @@ import multer from 'multer';
 import { env } from '../config/env';
 import { authService } from '../auth/auth.routes';
 import { requireRole } from '../auth/auth.middleware';
-import { createInvoicesController } from './invoices.controller';
-import { createInvoicesService } from './invoices.service';
+import { createExpensesController } from './expenses.controller';
+import { createExpensesService } from './expenses.service';
 import { N8nInvoiceExtractor } from './adapters/n8n-extractor';
 import { LocalDiskFileStorage } from './adapters/local-disk-storage';
 import { asyncHandler } from '../shared/asyncHandler';
 import { validate } from '../shared/validate';
 import {
   approveSchema,
-  exportInvoicesQuerySchema,
-  invoiceIdParamsSchema,
-  listInvoicesQuerySchema,
+  exportExpensesQuerySchema,
+  expenseIdParamsSchema,
+  listExpensesQuerySchema,
   rejectSchema,
-  updateInvoiceSchema
-} from './invoices.schema';
+  updateExpenseSchema
+} from './expenses.schema';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
@@ -34,70 +34,70 @@ const upload = multer({
 
 // Composition root for this feature: pick concrete adapters here. Swapping n8n
 // for another extractor, or local disk for S3, means changing only these two lines.
-const invoicesService = createInvoicesService({
+const expensesService = createExpensesService({
   extractor: new N8nInvoiceExtractor({ baseUrl: env.n8nBaseUrl, extractPath: env.n8nExtractPath }),
   fileStorage: new LocalDiskFileStorage(env.uploadsDir),
   approverResolver: authService
 });
-const invoicesController = createInvoicesController(invoicesService);
+const expensesController = createExpensesController(expensesService);
 
-export const invoicesRouter = Router();
+export const expensesRouter = Router();
 
-invoicesRouter.post('/', upload.single('file'), asyncHandler(invoicesController.upload));
+expensesRouter.post('/', upload.single('file'), asyncHandler(expensesController.upload));
 
-// Must come before "/:id" or "export" gets parsed as an invoice id.
-invoicesRouter.get(
+// Must come before "/:id" or "export" gets parsed as an expense id.
+expensesRouter.get(
   '/export',
-  validate(exportInvoicesQuerySchema, 'query'),
-  asyncHandler(invoicesController.exportCsv)
+  validate(exportExpensesQuerySchema, 'query'),
+  asyncHandler(expensesController.exportCsv)
 );
 
-invoicesRouter.get('/', validate(listInvoicesQuerySchema, 'query'), asyncHandler(invoicesController.list));
+expensesRouter.get('/', validate(listExpensesQuerySchema, 'query'), asyncHandler(expensesController.list));
 
-// Must come before "/:id" — "approvals" would otherwise be parsed as an invoice id.
-invoicesRouter.get(
+// Must come before "/:id" — "approvals" would otherwise be parsed as an expense id.
+expensesRouter.get(
   '/approvals/queue',
   requireRole('APPROVER', 'ADMIN'),
-  asyncHandler(invoicesController.approvalQueue)
+  asyncHandler(expensesController.approvalQueue)
 );
 
-invoicesRouter.get(
+expensesRouter.get(
   '/:id',
-  validate(invoiceIdParamsSchema, 'params'),
-  asyncHandler(invoicesController.getById)
+  validate(expenseIdParamsSchema, 'params'),
+  asyncHandler(expensesController.getById)
 );
 
-invoicesRouter.get(
+expensesRouter.get(
   '/:id/file',
-  validate(invoiceIdParamsSchema, 'params'),
-  asyncHandler(invoicesController.getFile)
+  validate(expenseIdParamsSchema, 'params'),
+  asyncHandler(expensesController.getFile)
 );
 
-invoicesRouter.patch(
+expensesRouter.patch(
   '/:id',
-  validate(invoiceIdParamsSchema, 'params'),
-  validate(updateInvoiceSchema, 'body'),
-  asyncHandler(invoicesController.update)
+  validate(expenseIdParamsSchema, 'params'),
+  validate(updateExpenseSchema, 'body'),
+  asyncHandler(expensesController.update)
 );
 
-invoicesRouter.post(
+expensesRouter.post(
   '/:id/submit',
-  validate(invoiceIdParamsSchema, 'params'),
-  asyncHandler(invoicesController.submit)
+  validate(expenseIdParamsSchema, 'params'),
+  asyncHandler(expensesController.submit)
 );
 
-invoicesRouter.post(
+expensesRouter.post(
   '/:id/approve',
   requireRole('APPROVER', 'ADMIN'),
-  validate(invoiceIdParamsSchema, 'params'),
+  validate(expenseIdParamsSchema, 'params'),
   validate(approveSchema, 'body'),
-  asyncHandler(invoicesController.approve)
+  asyncHandler(expensesController.approve)
 );
 
-invoicesRouter.post(
+expensesRouter.post(
   '/:id/reject',
   requireRole('APPROVER', 'ADMIN'),
-  validate(invoiceIdParamsSchema, 'params'),
+  validate(expenseIdParamsSchema, 'params'),
   validate(rejectSchema, 'body'),
-  asyncHandler(invoicesController.reject)
+  asyncHandler(expensesController.reject)
 );

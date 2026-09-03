@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
-  decideInvoice,
+  decideExpense,
   getCategories,
-  getInvoice,
-  getInvoiceFileBlobUrl,
-  submitInvoice,
-  updateInvoice
+  getExpense,
+  getExpenseFileBlobUrl,
+  submitExpense,
+  updateExpense
 } from '../api';
-import { Category, Invoice } from '../types';
+import { Category, Expense } from '../types';
 import { StatusPill } from '../components/StatusPill';
 import { useAuth } from '../auth/AuthContext';
 
@@ -39,25 +39,25 @@ function toDateInputValue(value: string | null): string {
   return value.slice(0, 10);
 }
 
-function toFormState(invoice: Invoice): FormState {
+function toFormState(expense: Expense): FormState {
   return {
-    invoiceNumber: invoice.invoiceNumber ?? '',
-    invoiceDate: toDateInputValue(invoice.invoiceDate),
-    dueDate: toDateInputValue(invoice.dueDate),
-    vendorName: invoice.vendorName ?? '',
-    vendorAddress: invoice.vendorAddress ?? '',
-    vendorTaxId: invoice.vendorTaxId ?? '',
-    customerName: invoice.customerName ?? '',
-    customerAddress: invoice.customerAddress ?? '',
-    subtotal: invoice.subtotal ?? '',
-    taxRate: invoice.taxRate ?? '',
-    taxAmount: invoice.taxAmount ?? '',
-    totalAmount: invoice.totalAmount ?? '',
-    currency: invoice.currency ?? '',
-    paymentMethod: invoice.paymentMethod ?? '',
-    paymentTerms: invoice.paymentTerms ?? '',
-    notes: invoice.notes ?? '',
-    categoryId: invoice.category?.id ?? ''
+    invoiceNumber: expense.invoiceNumber ?? '',
+    invoiceDate: toDateInputValue(expense.invoiceDate),
+    dueDate: toDateInputValue(expense.dueDate),
+    vendorName: expense.vendorName ?? '',
+    vendorAddress: expense.vendorAddress ?? '',
+    vendorTaxId: expense.vendorTaxId ?? '',
+    customerName: expense.customerName ?? '',
+    customerAddress: expense.customerAddress ?? '',
+    subtotal: expense.subtotal ?? '',
+    taxRate: expense.taxRate ?? '',
+    taxAmount: expense.taxAmount ?? '',
+    totalAmount: expense.totalAmount ?? '',
+    currency: expense.currency ?? '',
+    paymentMethod: expense.paymentMethod ?? '',
+    paymentTerms: expense.paymentTerms ?? '',
+    notes: expense.notes ?? '',
+    categoryId: expense.category?.id ?? ''
   };
 }
 
@@ -78,14 +78,14 @@ function formatDateTime(value: string | null): string {
   return new Date(value).toLocaleString();
 }
 
-export function InvoiceReviewPage() {
+export function ExpenseReviewPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
   const justUploaded = Boolean((location.state as { justUploaded?: boolean } | null)?.justUploaded);
 
-  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [expense, setExpense] = useState<Expense | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState<FormState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,13 +98,13 @@ export function InvoiceReviewPage() {
   const load = () => {
     if (!id) return;
     setLoading(true);
-    Promise.all([getInvoice(id), getCategories()])
+    Promise.all([getExpense(id), getCategories()])
       .then(([inv, cats]) => {
-        setInvoice(inv);
+        setExpense(inv);
         setForm(toFormState(inv));
         setCategories(cats);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load invoice'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expense'))
       .finally(() => setLoading(false));
   };
 
@@ -116,7 +116,7 @@ export function InvoiceReviewPage() {
   useEffect(() => {
     if (!id) return;
     let objectUrl: string | null = null;
-    getInvoiceFileBlobUrl(id)
+    getExpenseFileBlobUrl(id)
       .then((url) => {
         objectUrl = url;
         setFileUrl(url);
@@ -162,17 +162,17 @@ export function InvoiceReviewPage() {
     setSaving('draft');
     setError(null);
     try {
-      await updateInvoice(id, payload);
-      navigate('/invoices');
+      await updateExpense(id, payload);
+      navigate('/expenses');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save changes');
       setSaving(null);
     }
   };
 
-  // Saves the edited fields, then routes the invoice to the approver
+  // Saves the edited fields, then routes the expense to the approver
   // (-> SUBMITTED, or straight to APPROVED if there's no manager to route to).
-  // Also how a rejected invoice gets re-submitted after edits.
+  // Also how a rejected expense gets re-submitted after edits.
   const handleSubmitForApproval = async () => {
     if (!id) return;
     const payload = buildPayload();
@@ -181,9 +181,9 @@ export function InvoiceReviewPage() {
     setSaving('submit');
     setError(null);
     try {
-      await updateInvoice(id, payload);
-      await submitInvoice(id);
-      navigate('/invoices');
+      await updateExpense(id, payload);
+      await submitExpense(id);
+      navigate('/expenses');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit for approval');
     } finally {
@@ -196,7 +196,7 @@ export function InvoiceReviewPage() {
     setSaving('approve');
     setError(null);
     try {
-      await decideInvoice(id, 'approve', null);
+      await decideExpense(id, 'approve', null);
       navigate('/approvals');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to approve');
@@ -207,13 +207,13 @@ export function InvoiceReviewPage() {
   const handleReject = async () => {
     if (!id) return;
     if (!rejectComment.trim()) {
-      setError('Please explain why you are rejecting this invoice.');
+      setError('Please explain why you are rejecting this expense.');
       return;
     }
     setSaving('reject');
     setError(null);
     try {
-      await decideInvoice(id, 'reject', rejectComment.trim());
+      await decideExpense(id, 'reject', rejectComment.trim());
       navigate('/approvals');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reject');
@@ -222,63 +222,63 @@ export function InvoiceReviewPage() {
   };
 
   if (loading) {
-    return <div className="list-loading">Loading invoice…</div>;
+    return <div className="list-loading">Loading expense…</div>;
   }
 
-  if (!invoice || !form) {
+  if (!expense || !form) {
     return (
       <div className="empty-state">
-        <h3>Invoice not found</h3>
-        <Link className="button-primary" to="/invoices">
-          Back to invoices
+        <h3>Expense not found</h3>
+        <Link className="button-primary" to="/expenses">
+          Back to expenses
         </Link>
       </div>
     );
   }
 
-  const pendingApproval = invoice.approvals.find((a) => a.decision === 'PENDING');
-  const lastDecision = invoice.approvals.find((a) => a.decision !== 'PENDING');
+  const pendingApproval = expense.approvals.find((a) => a.decision === 'PENDING');
+  const lastDecision = expense.approvals.find((a) => a.decision !== 'PENDING');
   const isMyApproval = Boolean(pendingApproval && user && pendingApproval.approverId === user.id);
 
   // Editable whenever it's the submitter's turn to act: fresh extraction,
   // saved as a draft, or kicked back with a rejection. Locked everywhere else
   // (waiting on someone else, or already decided).
-  const isEditable = ['EXTRACTED', 'FAILED', 'REJECTED'].includes(invoice.status) && !isMyApproval;
+  const isEditable = ['EXTRACTED', 'FAILED', 'REJECTED'].includes(expense.status) && !isMyApproval;
 
   return (
     <div className="review-page">
       <div className="review-header">
-        <Link className="back-link" to="/invoices">
-          ← All invoices
+        <Link className="back-link" to="/expenses">
+          ← All expenses
         </Link>
-        <StatusPill status={invoice.status} />
+        <StatusPill status={expense.status} />
       </div>
 
-      {justUploaded && invoice.status === 'EXTRACTED' && (
+      {justUploaded && expense.status === 'EXTRACTED' && (
         <div className="alert alert-info">
           <span>We extracted these fields automatically — check them over before submitting.</span>
         </div>
       )}
 
-      {invoice.isDuplicate && (
+      {expense.isDuplicate && (
         <div className="alert alert-warning">
           <span>
-            ⚠ This looks like a possible duplicate of an invoice already in the system (same vendor, invoice
+            ⚠ This looks like a possible duplicate of an expense already in the system (same vendor, expense
             number, and amount).
           </span>
         </div>
       )}
 
-      {invoice.status === 'FAILED' && (
+      {expense.status === 'FAILED' && (
         <div className="alert alert-error">
           <span>
-            Extraction failed{invoice.errorMessage ? `: ${invoice.errorMessage}` : '.'} You can still fill in the
+            Extraction failed{expense.errorMessage ? `: ${expense.errorMessage}` : '.'} You can still fill in the
             fields manually below.
           </span>
         </div>
       )}
 
-      {invoice.status === 'SUBMITTED' && !isMyApproval && (
+      {expense.status === 'SUBMITTED' && !isMyApproval && (
         <div className="alert alert-info">
           <span>
             Submitted{pendingApproval ? ` — waiting on ${pendingApproval.approver.name}'s approval` : ''}.
@@ -286,13 +286,13 @@ export function InvoiceReviewPage() {
         </div>
       )}
 
-      {invoice.status === 'SUBMITTED' && isMyApproval && (
+      {expense.status === 'SUBMITTED' && isMyApproval && (
         <div className="alert alert-info">
-          <span>Submitted by {invoice.uploader.name}. Review the details and approve or reject below.</span>
+          <span>Submitted by {expense.uploader.name}. Review the details and approve or reject below.</span>
         </div>
       )}
 
-      {invoice.status === 'APPROVED' && lastDecision && (
+      {expense.status === 'APPROVED' && lastDecision && (
         <div className="alert alert-success">
           <span>
             Approved by {lastDecision.approver.name}
@@ -302,7 +302,7 @@ export function InvoiceReviewPage() {
         </div>
       )}
 
-      {invoice.status === 'REJECTED' && lastDecision && (
+      {expense.status === 'REJECTED' && lastDecision && (
         <div className="alert alert-error">
           <span>
             Rejected by {lastDecision.approver.name}: "{lastDecision.comment}". Fix the details below and submit
@@ -321,7 +321,7 @@ export function InvoiceReviewPage() {
         <div className="review-preview">
           {!fileUrl ? (
             <span className="preview-loading">Loading preview…</span>
-          ) : invoice.mimeType?.startsWith('image/') ? (
+          ) : expense.mimeType?.startsWith('image/') ? (
             <img src={fileUrl} alt="Invoice document" className="review-preview-image" />
           ) : (
             <a className="button-outline" href={fileUrl} target="_blank" rel="noreferrer">
@@ -449,7 +449,7 @@ export function InvoiceReviewPage() {
               </div>
             </div>
 
-            {invoice.items.length > 0 && (
+            {expense.items.length > 0 && (
               <div className="form-section">
                 <h3>Line items</h3>
                 <div className="invoice-table-wrap">
@@ -463,7 +463,7 @@ export function InvoiceReviewPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {invoice.items.map((item) => (
+                      {expense.items.map((item) => (
                         <tr key={item.id}>
                           <td>{item.description}</td>
                           <td className="align-right">{item.quantity ?? '—'}</td>

@@ -2,18 +2,18 @@ import { z } from 'zod';
 
 const statusEnum = z.enum(['PENDING', 'PROCESSING', 'EXTRACTED', 'FAILED', 'SUBMITTED', 'APPROVED', 'REJECTED']);
 
-export const listInvoicesQuerySchema = z.object({
+export const listExpensesQuerySchema = z.object({
   status: statusEnum.optional(),
   search: z.string().trim().min(1).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20)
 });
 
-export const exportInvoicesQuerySchema = z.object({
+export const exportExpensesQuerySchema = z.object({
   status: statusEnum.optional()
 });
 
-export const invoiceIdParamsSchema = z.object({
+export const expenseIdParamsSchema = z.object({
   id: z.string().uuid()
 });
 
@@ -27,8 +27,8 @@ const lineItemSchema = z.object({
 
 // Pure field edits — no status here. Every status change goes through its own
 // action endpoint (submit/approve/reject), so there's exactly one way to move
-// an invoice forward, not an ambiguous status field mixed into a field-edit PATCH.
-export const updateInvoiceSchema = z.object({
+// an expense forward, not an ambiguous status field mixed into a field-edit PATCH.
+export const updateExpenseSchema = z.object({
   invoiceNumber: z.string().nullable().optional(),
   invoiceDate: z.coerce.date().nullable().optional(),
   dueDate: z.coerce.date().nullable().optional(),
@@ -55,9 +55,9 @@ export const approveSchema = z.object({
 
 // Rejecting without saying why leaves the submitter with nothing to fix.
 export const rejectSchema = z.object({
-  comment: z.string().trim().min(1, 'A reason is required when rejecting an invoice')
+  comment: z.string().trim().min(1, 'A reason is required when rejecting an expense')
 });
 
-export type UpdateInvoiceInput = z.infer<typeof updateInvoiceSchema>;
-export type ListInvoicesQuery = z.infer<typeof listInvoicesQuerySchema>;
-export type ExportInvoicesQuery = z.infer<typeof exportInvoicesQuerySchema>;
+export type UpdateExpenseInput = z.infer<typeof updateExpenseSchema>;
+export type ListExpensesQuery = z.infer<typeof listExpensesQuerySchema>;
+export type ExportExpensesQuery = z.infer<typeof exportExpensesQuerySchema>;

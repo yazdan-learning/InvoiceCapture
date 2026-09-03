@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getApprovalQueue } from '../api';
-import { Invoice } from '../types';
+import { Expense } from '../types';
 import { StatusPill } from '../components/StatusPill';
 
 function formatAmount(amount: string | null, currency: string | null) {
@@ -15,13 +15,13 @@ function formatAmount(amount: string | null, currency: string | null) {
 
 export function ApprovalQueuePage() {
   const navigate = useNavigate();
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getApprovalQueue()
-      .then((result) => setInvoices(result.invoices))
+      .then((result) => setExpenses(result.expenses))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load approvals'))
       .finally(() => setLoading(false));
   }, []);
@@ -40,10 +40,10 @@ export function ApprovalQueuePage() {
 
       {loading ? (
         <div className="list-loading">Loading…</div>
-      ) : invoices.length === 0 ? (
+      ) : expenses.length === 0 ? (
         <div className="empty-state">
           <h3>Nothing waiting on you</h3>
-          <p>Invoices submitted by your team will show up here.</p>
+          <p>Expenses submitted by your team will show up here.</p>
         </div>
       ) : (
         <>
@@ -68,19 +68,19 @@ export function ApprovalQueuePage() {
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((invoice) => (
-                  <tr key={invoice.id} onClick={() => navigate(`/invoices/${invoice.id}`)}>
-                    <td>{invoice.uploader.name}</td>
+                {expenses.map((expense) => (
+                  <tr key={expense.id} onClick={() => navigate(`/expenses/${expense.id}`)}>
+                    <td>{expense.uploader.name}</td>
                     <td>
-                      <span className="vendor-name" title={invoice.vendorName || 'Unknown vendor'}>
-                        {invoice.vendorName || 'Unknown vendor'}
+                      <span className="vendor-name" title={expense.vendorName || 'Unknown vendor'}>
+                        {expense.vendorName || 'Unknown vendor'}
                       </span>
                     </td>
-                    <td>{invoice.invoiceNumber || '—'}</td>
-                    <td>{invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString() : '—'}</td>
-                    <td className="align-right amount-cell">{formatAmount(invoice.totalAmount, invoice.currency)}</td>
+                    <td>{expense.invoiceNumber || '—'}</td>
+                    <td>{expense.invoiceDate ? new Date(expense.invoiceDate).toLocaleDateString() : '—'}</td>
+                    <td className="align-right amount-cell">{formatAmount(expense.totalAmount, expense.currency)}</td>
                     <td>
-                      <StatusPill status={invoice.status} />
+                      <StatusPill status={expense.status} />
                     </td>
                   </tr>
                 ))}
@@ -89,16 +89,16 @@ export function ApprovalQueuePage() {
           </div>
 
           <div className="invoice-cards">
-            {invoices.map((invoice) => (
-              <div key={invoice.id} className="invoice-card" onClick={() => navigate(`/invoices/${invoice.id}`)}>
+            {expenses.map((expense) => (
+              <div key={expense.id} className="invoice-card" onClick={() => navigate(`/expenses/${expense.id}`)}>
                 <div className="invoice-card-top">
-                  <span className="invoice-card-vendor">{invoice.vendorName || 'Unknown vendor'}</span>
-                  <StatusPill status={invoice.status} />
+                  <span className="invoice-card-vendor">{expense.vendorName || 'Unknown vendor'}</span>
+                  <StatusPill status={expense.status} />
                 </div>
-                <div className="invoice-card-amount">{formatAmount(invoice.totalAmount, invoice.currency)}</div>
+                <div className="invoice-card-amount">{formatAmount(expense.totalAmount, expense.currency)}</div>
                 <div className="invoice-card-meta">
-                  <span>submitted by {invoice.uploader.name}</span>
-                  <span>{invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString() : '—'}</span>
+                  <span>submitted by {expense.uploader.name}</span>
+                  <span>{expense.invoiceDate ? new Date(expense.invoiceDate).toLocaleDateString() : '—'}</span>
                 </div>
               </div>
             ))}

@@ -13,7 +13,7 @@ model Organization {
   createdAt DateTime @default(now())
 
   users      User[]
-  invoices   Invoice[]
+  expenses   Expense[]
   categories Category[]
 }
 
@@ -41,7 +41,7 @@ model User {
 
   createdAt DateTime @default(now())
 
-  invoices  Invoice[]
+  expenses  Expense[]
   approvals Approval[]
 }
 
@@ -53,12 +53,12 @@ model Category {
   name      String
   createdAt DateTime @default(now())
 
-  invoices Invoice[]
+  expenses Expense[]
 
   @@unique([organizationId, name])
 }
 
-enum InvoiceStatus {
+enum ExpenseStatus {
   PENDING // uploaded, not yet processed
   PROCESSING
   EXTRACTED // OCR/AI succeeded, awaiting human review
@@ -68,7 +68,18 @@ enum InvoiceStatus {
   REJECTED // sent back to the submitter, editable and re-submittable
 }
 
-model Invoice {
+// RECEIPT is the only type v1 actually supports end to end (document capture
+// + OCR). MILEAGE/PER_DIEM/GENERAL are reserved here so adding them later is
+// a matter of using the field, not migrating the schema again — the vendor/
+// document fields below are already nullable for exactly this reason.
+enum ExpenseType {
+  RECEIPT
+  MILEAGE
+  PER_DIEM
+  GENERAL
+}
+
+model Expense {
   id             String       @id @default(uuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -79,10 +90,13 @@ model Invoice {
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id])
 
-  filePath  String
-  mimeType  String
-  fileSizeB Int
-  status    InvoiceStatus @default(PENDING)
+  expenseType ExpenseType   @default(RECEIPT)
+  status      ExpenseStatus @default(PENDING)
+
+  // Document capture — only populated for RECEIPT-type expenses.
+  filePath  String?
+  mimeType  String?
+  fileSizeB Int?
 
   invoiceNumber   String?
   invoiceDate     DateTime?
@@ -102,7 +116,7 @@ model Invoice {
   paymentTerms  String?
   notes         String?
 
-  isDuplicate  Boolean @default(false)
+  isDuplicate   Boolean @default(false)
   duplicateOfId String?
 
   rawExtraction Json?
@@ -111,7 +125,7 @@ model Invoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  items     InvoiceLineItem[]
+  items     ExpenseLineItem[]
   approvals Approval[]
 
   @@index([organizationId, status])
@@ -130,8 +144,8 @@ enum ApprovalDecision {
 // full history stays visible via createdAt.
 model Approval {
   id        String  @id @default(uuid())
-  invoiceId String
-  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  expenseId String
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
 
   approverId String
   approver   User   @relation(fields: [approverId], references: [id])
@@ -142,14 +156,14 @@ model Approval {
   decidedAt DateTime?
   createdAt DateTime         @default(now())
 
-  @@index([invoiceId])
+  @@index([expenseId])
   @@index([approverId, decision])
 }
 
-model InvoiceLineItem {
+model ExpenseLineItem {
   id        String  @id @default(uuid())
-  invoiceId String
-  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  expenseId String
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
 
   description String
   quantity    Decimal? @db.Decimal(12, 3)
