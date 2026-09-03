@@ -20,24 +20,36 @@ only ever reads `req.actor` — it doesn't know or care how the request got auth
 `User.managerId` is the approval-routing mechanism: your approver is your manager, checked
 against `role` (must be `APPROVER`/`ADMIN`) at submit time.
 
-Two exceptions get ports/adapters instead of plain layering, because both are known to
-change providers later: `src/expenses/ports.ts` defines `InvoiceExtractor` (document/OCR
-extraction — still named for what it extracts, not the entity it's attached to) and
-`FileStorage`; `src/expenses/adapters/n8n-extractor.ts` and `local-disk-storage.ts` are
-today's implementations (n8n, local disk). `expenses.routes.ts` is the composition root —
+Three exceptions get ports/adapters instead of plain layering, because all three are known
+to change providers later: `src/expenses/ports.ts` defines `InvoiceExtractor` (document/OCR
+extraction — still named for what it extracts, not the entity it's attached to),
+`FileStorage`, and `DistanceCalculator` (mileage distance); `src/expenses/adapters/`
+holds today's implementations (`n8n-extractor.ts`, `local-disk-storage.ts`,
+`google-directions.ts`, plus `unconfigured-distance-calculator.ts` as the no-op fallback
+when `GOOGLE_DIRECTIONS_API_KEY` isn't set). `expenses.routes.ts` is the composition root —
 it's the only place that picks which adapter to use, via constructor injection into
-`createExpensesService`. Swapping n8n for another extractor, or local disk for S3, means
-writing one new adapter class and changing two lines there — nothing else in the app
-imports n8n or `fs` directly.
+`createExpensesService`. Swapping n8n for another extractor, local disk for S3, or Google
+Directions for another mapping provider means writing one new adapter class and changing
+the composition root — nothing else in the app imports n8n, `fs`, or the Google API directly.
 
 ## Data model
 
-`Expense.expenseType` discriminates what kind of expense a row is. Only `RECEIPT` is fully
-implemented (document capture + OCR); `MILEAGE`, `PER_DIEM`, `GENERAL` are reserved in the
-enum so adding them later is additive, not a migration — the document-specific fields
-(`filePath`, `vendorName`, `invoiceNumber`, etc.) are already nullable for exactly this
-reason. The approval workflow (`Approval`, status lifecycle) is entirely generic — it
-doesn't know or care what `expenseType` it's approving.
+`Expense.expenseType` discriminates what kind of expense a row is. `RECEIPT` (document
+capture + OCR) and `MILEAGE` (distance-based) are fully implemented; `PER_DIEM`, `GENERAL`
+are reserved in the enum so adding them later is additive, not a migration — the
+type-specific fields (`filePath`/`vendorName`/`invoiceNumber`… for receipts,
+`mileageDate`/`mileageFrom`/`mileageTo`/`mileageDistanceKm`/`mileageRoundTrip` for mileage)
+are all nullable for exactly this reason. The approval workflow (`Approval`, status
+lifecycle) is entirely generic — it doesn't know or care what `expenseType` it's approving.
+
+For mileage, `mileageDistanceKm` always stores the one-way distance; `totalAmount` is
+always derived server-side as `distanceKm × (roundTrip ? 2 : 1) × Organization.mileageRatePerKm`,
+both on creation and on every `PATCH` — the client can never set `totalAmount` directly for
+a mileage expense, so an edit can't accidentally double- or halve-count the round trip.
+Distance can be entered directly (`distanceKm`) or calculated from `from`/`to` addresses via
+the `DistanceCalculator` port; until `GOOGLE_DIRECTIONS_API_KEY` is set, the calculated path
+returns a clear 400 telling the caller to enter the distance manually — manual entry always
+works with zero configuration.
 
 ## Status lifecycle
 
@@ -75,6 +87,8 @@ unless `ADMIN`:
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/api/expenses` | multipart upload (field `file`) → calls n8n → persists → returns Expense |
+| POST | `/api/expenses/mileage` | create a MILEAGE expense — `distanceKm` directly, or `from`/`to` to calculate it |
+| POST | `/api/expenses/mileage/distance` | preview distance/duration for `from`/`to` without creating an expense |
 | GET | `/api/expenses` | list, filters: `status`, `search`, `page`, `pageSize` |
 | GET | `/api/expenses/:id` | single expense detail |
 | GET | `/api/expenses/:id/file` | the original uploaded document (RECEIPT type only) |

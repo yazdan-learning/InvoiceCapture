@@ -2,7 +2,9 @@ import { ReactElement } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { DashboardPage } from './pages/DashboardPage';
 import { ExpenseListPage } from './pages/ExpenseListPage';
+import { AddExpensePage } from './pages/AddExpensePage';
 import { UploadPage } from './pages/UploadPage';
+import { MileageEntryPage } from './pages/MileageEntryPage';
 import { ExpenseReviewPage } from './pages/ExpenseReviewPage';
 import { LoginPage } from './pages/LoginPage';
 import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
@@ -54,7 +56,23 @@ function App() {
         path="/upload"
         element={
           <Protected>
+            <AddExpensePage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/upload/receipt"
+        element={
+          <Protected>
             <UploadPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/upload/mileage"
+        element={
+          <Protected>
+            <MileageEntryPage />
           </Protected>
         }
       />

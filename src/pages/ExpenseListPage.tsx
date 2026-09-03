@@ -30,6 +30,19 @@ function formatDate(date: string | null) {
   return new Date(date).toLocaleDateString();
 }
 
+function expenseLabel(expense: Expense): string {
+  if (expense.expenseType === 'MILEAGE') {
+    return expense.mileageFrom && expense.mileageTo
+      ? `${expense.mileageFrom} → ${expense.mileageTo}`
+      : 'Mileage';
+  }
+  return expense.vendorName || 'Unknown vendor';
+}
+
+function expenseDate(expense: Expense): string | null {
+  return expense.expenseType === 'MILEAGE' ? expense.mileageDate : expense.invoiceDate;
+}
+
 export function ExpenseListPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -119,7 +132,7 @@ export function ExpenseListPage() {
             Export CSV
           </button>
           <Link className="button-primary" to="/upload">
-            + Upload Invoice
+            + Add Expense
           </Link>
         </div>
       </div>
@@ -135,9 +148,9 @@ export function ExpenseListPage() {
       ) : expenses.length === 0 ? (
         <div className="empty-state">
           <h3>No expenses yet</h3>
-          <p>Upload your first invoice to get started.</p>
+          <p>Upload a receipt or log mileage to get started.</p>
           <Link className="button-primary" to="/upload">
-            + Upload Invoice
+            + Add Expense
           </Link>
         </div>
       ) : (
@@ -167,8 +180,8 @@ export function ExpenseListPage() {
                   <tr key={expense.id} onClick={() => navigate(`/expenses/${expense.id}`)}>
                     <td>
                       <span className="vendor-cell">
-                        <span className="vendor-name" title={expense.vendorName || 'Unknown vendor'}>
-                          {expense.vendorName || 'Unknown vendor'}
+                        <span className="vendor-name" title={expenseLabel(expense)}>
+                          {expenseLabel(expense)}
                         </span>
                         {expense.isDuplicate && (
                           <span className="dup-flag" title="Possible duplicate of an existing invoice">
@@ -177,8 +190,8 @@ export function ExpenseListPage() {
                         )}
                       </span>
                     </td>
-                    <td>{expense.invoiceNumber || '—'}</td>
-                    <td>{formatDate(expense.invoiceDate)}</td>
+                    <td>{expense.expenseType === 'MILEAGE' ? '—' : expense.invoiceNumber || '—'}</td>
+                    <td>{formatDate(expenseDate(expense))}</td>
                     <td>{expense.category?.name || '—'}</td>
                     <td className="align-right amount-cell">{formatAmount(expense.totalAmount, expense.currency)}</td>
                     <td>
@@ -194,12 +207,12 @@ export function ExpenseListPage() {
             {expenses.map((expense) => (
               <div key={expense.id} className="invoice-card" onClick={() => navigate(`/expenses/${expense.id}`)}>
                 <div className="invoice-card-top">
-                  <span className="invoice-card-vendor">{expense.vendorName || 'Unknown vendor'}</span>
+                  <span className="invoice-card-vendor">{expenseLabel(expense)}</span>
                   <StatusPill status={expense.status} />
                 </div>
                 <div className="invoice-card-amount">{formatAmount(expense.totalAmount, expense.currency)}</div>
                 <div className="invoice-card-meta">
-                  <span>{formatDate(expense.invoiceDate)}</span>
+                  <span>{formatDate(expenseDate(expense))}</span>
                   {expense.category && <span>{expense.category.name}</span>}
                   {expense.isDuplicate && <span className="dup-flag">⚠ duplicate</span>}
                 </div>

@@ -7,13 +7,17 @@ import { createExpensesController } from './expenses.controller';
 import { createExpensesService } from './expenses.service';
 import { N8nInvoiceExtractor } from './adapters/n8n-extractor';
 import { LocalDiskFileStorage } from './adapters/local-disk-storage';
+import { GoogleDirectionsCalculator } from './adapters/google-directions';
+import { UnconfiguredDistanceCalculator } from './adapters/unconfigured-distance-calculator';
 import { asyncHandler } from '../shared/asyncHandler';
 import { validate } from '../shared/validate';
 import {
   approveSchema,
+  createMileageSchema,
   exportExpensesQuerySchema,
   expenseIdParamsSchema,
   listExpensesQuerySchema,
+  mileageDistancePreviewSchema,
   rejectSchema,
   updateExpenseSchema
 } from './expenses.schema';
@@ -37,13 +41,29 @@ const upload = multer({
 const expensesService = createExpensesService({
   extractor: new N8nInvoiceExtractor({ baseUrl: env.n8nBaseUrl, extractPath: env.n8nExtractPath }),
   fileStorage: new LocalDiskFileStorage(env.uploadsDir),
-  approverResolver: authService
+  approverResolver: authService,
+  distanceCalculator: env.googleDirectionsApiKey
+    ? new GoogleDirectionsCalculator(env.googleDirectionsApiKey)
+    : new UnconfiguredDistanceCalculator()
 });
 const expensesController = createExpensesController(expensesService);
 
 export const expensesRouter = Router();
 
 expensesRouter.post('/', upload.single('file'), asyncHandler(expensesController.upload));
+
+// Must come before "/:id" or "mileage" gets parsed as an expense id.
+expensesRouter.post(
+  '/mileage/distance',
+  validate(mileageDistancePreviewSchema, 'body'),
+  asyncHandler(expensesController.previewMileageDistance)
+);
+
+expensesRouter.post(
+  '/mileage',
+  validate(createMileageSchema, 'body'),
+  asyncHandler(expensesController.createMileage)
+);
 
 // Must come before "/:id" or "export" gets parsed as an expense id.
 expensesRouter.get(

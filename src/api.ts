@@ -128,6 +128,11 @@ export type UpdateExpensePayload = Partial<{
   paymentTerms: string | null;
   notes: string | null;
   categoryId: string | null;
+  mileageDate: string | null;
+  mileageFrom: string | null;
+  mileageTo: string | null;
+  mileageDistanceKm: number | null;
+  mileageRoundTrip: boolean;
 }>;
 
 export async function updateExpense(
@@ -139,6 +144,46 @@ export async function updateExpense(
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(payload)
+  });
+  return parseJsonOrThrow(response);
+}
+
+export type CreateMileagePayload = {
+  date: string;
+  from?: string;
+  to?: string;
+  distanceKm?: number;
+  roundTrip: boolean;
+  categoryId?: string | null;
+  notes?: string | null;
+};
+
+export async function createMileageExpense(
+  payload: CreateMileagePayload,
+  apiBaseUrl = defaultBaseUrl
+): Promise<Expense> {
+  const response = await fetch(apiUrl('/api/expenses/mileage', apiBaseUrl), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload)
+  });
+  return parseJsonOrThrow(response);
+}
+
+export type DistancePreview = {
+  distanceKm: number;
+  durationMinutes: number;
+};
+
+export async function previewMileageDistance(
+  from: string,
+  to: string,
+  apiBaseUrl = defaultBaseUrl
+): Promise<DistancePreview> {
+  const response = await fetch(apiUrl('/api/expenses/mileage/distance', apiBaseUrl), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ from, to })
   });
   return parseJsonOrThrow(response);
 }

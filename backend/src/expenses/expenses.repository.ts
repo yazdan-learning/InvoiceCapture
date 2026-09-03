@@ -38,6 +38,12 @@ export type CreateExpenseInput = {
   duplicateOfId?: string | null;
   rawExtraction?: Prisma.InputJsonValue;
   errorMessage?: string | null;
+  categoryId?: string | null;
+  mileageDate?: Date | null;
+  mileageFrom?: string | null;
+  mileageTo?: string | null;
+  mileageDistanceKm?: number | null;
+  mileageRoundTrip?: boolean;
   items: LineItemInput[];
 };
 
@@ -161,5 +167,13 @@ export const expensesRepository = {
       include: expenseInclude,
       orderBy: { createdAt: 'asc' }
     });
+  },
+
+  async getOrganizationMileageRate(organizationId: string): Promise<number> {
+    const org = await prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { mileageRatePerKm: true }
+    });
+    return Number(org.mileageRatePerKm);
   }
 };

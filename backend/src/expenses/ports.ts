@@ -65,3 +65,17 @@ export type Approver = {
 export interface ApproverResolver {
   getApprover(userId: string): Promise<Approver | null>;
 }
+
+export type DistanceResult = {
+  distanceKm: number;
+  durationMinutes: number;
+};
+
+// Third port with the same shape as the other two: today's implementation
+// (Google Directions) is swappable for Mapbox or anything else later without
+// touching the service. Takes plain address text on purpose — Directions does
+// its own geocoding, so no separate Places/autocomplete dependency is needed
+// just to get an accurate distance.
+export interface DistanceCalculator {
+  getDistance(from: string, to: string): Promise<DistanceResult>;
+}

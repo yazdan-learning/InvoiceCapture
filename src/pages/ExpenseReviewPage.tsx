@@ -5,6 +5,7 @@ import {
   getCategories,
   getExpense,
   getExpenseFileBlobUrl,
+  previewMileageDistance,
   submitExpense,
   updateExpense
 } from '../api';
@@ -30,6 +31,11 @@ type FormState = {
   paymentTerms: string;
   notes: string;
   categoryId: string;
+  mileageDate: string;
+  mileageFrom: string;
+  mileageTo: string;
+  mileageDistanceKm: string;
+  mileageRoundTrip: boolean;
 };
 
 type SavingAction = 'draft' | 'submit' | 'approve' | 'reject' | null;
@@ -57,7 +63,12 @@ function toFormState(expense: Expense): FormState {
     paymentMethod: expense.paymentMethod ?? '',
     paymentTerms: expense.paymentTerms ?? '',
     notes: expense.notes ?? '',
-    categoryId: expense.category?.id ?? ''
+    categoryId: expense.category?.id ?? '',
+    mileageDate: toDateInputValue(expense.mileageDate),
+    mileageFrom: expense.mileageFrom ?? '',
+    mileageTo: expense.mileageTo ?? '',
+    mileageDistanceKm: expense.mileageDistanceKm ?? '',
+    mileageRoundTrip: expense.mileageRoundTrip
   };
 }
 
@@ -94,6 +105,8 @@ export function ExpenseReviewPage() {
   const [showRejectBox, setShowRejectBox] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
   const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [calculatingDistance, setCalculatingDistance] = useState(false);
+  const [distanceError, setDistanceError] = useState<string | null>(null);
 
   const load = () => {
     if (!id) return;
@@ -112,9 +125,11 @@ export function ExpenseReviewPage() {
   useEffect(load, [id]);
 
   // The file route requires auth, so <img src> can't hit it directly — fetch it
-  // as an authenticated blob instead and point the image at that.
+  // as an authenticated blob instead and point the image at that. Mileage
+  // expenses have no attached document, so skip the request entirely rather
+  // than round-tripping to a guaranteed 404.
   useEffect(() => {
-    if (!id) return;
+    if (!id || !expense || expense.expenseType === 'MILEAGE') return;
     let objectUrl: string | null = null;
     getExpenseFileBlobUrl(id)
       .then((url) => {
@@ -125,14 +140,28 @@ export function ExpenseReviewPage() {
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, expense?.expenseType]);
 
-  const updateField = (field: keyof FormState, value: string) => {
+  const updateField = (field: keyof FormState, value: string | boolean) => {
     setForm((prev) => (prev ? { ...prev, [field]: value } : prev));
   };
 
+  const isMileage = expense?.expenseType === 'MILEAGE';
+
   const buildPayload = () => {
     if (!form) return null;
+    if (isMileage) {
+      return {
+        mileageDate: emptyToNull(form.mileageDate),
+        mileageFrom: emptyToNull(form.mileageFrom),
+        mileageTo: emptyToNull(form.mileageTo),
+        mileageDistanceKm: numberOrNull(form.mileageDistanceKm),
+        mileageRoundTrip: form.mileageRoundTrip,
+        categoryId: emptyToNull(form.categoryId),
+        notes: emptyToNull(form.notes)
+      };
+    }
     return {
       invoiceNumber: emptyToNull(form.invoiceNumber),
       invoiceDate: emptyToNull(form.invoiceDate),
@@ -152,6 +181,20 @@ export function ExpenseReviewPage() {
       notes: emptyToNull(form.notes),
       categoryId: emptyToNull(form.categoryId)
     };
+  };
+
+  const handleCalculateDistance = async () => {
+    if (!form || !form.mileageFrom.trim() || !form.mileageTo.trim()) return;
+    setCalculatingDistance(true);
+    setDistanceError(null);
+    try {
+      const result = await previewMileageDistance(form.mileageFrom.trim(), form.mileageTo.trim());
+      updateField('mileageDistanceKm', result.distanceKm.toFixed(1));
+    } catch (err) {
+      setDistanceError(err instanceof Error ? err.message : 'Could not calculate distance');
+    } finally {
+      setCalculatingDistance(false);
+    }
   };
 
   const handleSaveDraft = async () => {
@@ -245,6 +288,78 @@ export function ExpenseReviewPage() {
   // (waiting on someone else, or already decided).
   const isEditable = ['EXTRACTED', 'FAILED', 'REJECTED'].includes(expense.status) && !isMyApproval;
 
+  const actionBar = (
+    <>
+      {isEditable && (
+        <div className="action-bar">
+          <button className="button-outline" disabled={saving !== null} onClick={handleSaveDraft} type="button">
+            {saving === 'draft' ? 'Saving…' : 'Save draft'}
+          </button>
+          <button
+            className="button-primary"
+            disabled={saving !== null}
+            onClick={handleSubmitForApproval}
+            type="button"
+          >
+            {saving === 'submit' ? 'Submitting…' : 'Submit for approval'}
+          </button>
+        </div>
+      )}
+
+      {isMyApproval && !showRejectBox && (
+        <div className="action-bar">
+          <button
+            className="button-outline button-danger"
+            disabled={saving !== null}
+            onClick={() => setShowRejectBox(true)}
+            type="button"
+          >
+            Reject
+          </button>
+          <button className="button-primary" disabled={saving !== null} onClick={handleApprove} type="button">
+            {saving === 'approve' ? 'Approving…' : 'Approve'}
+          </button>
+        </div>
+      )}
+
+      {isMyApproval && showRejectBox && (
+        <div className="reject-box">
+          <label className="form-field form-field--wide">
+            <span>Reason for rejecting</span>
+            <textarea
+              rows={3}
+              autoFocus
+              value={rejectComment}
+              onChange={(e) => setRejectComment(e.target.value)}
+              placeholder="Let the submitter know what needs to change…"
+            />
+          </label>
+          <div className="action-bar">
+            <button
+              className="button-outline"
+              disabled={saving !== null}
+              onClick={() => {
+                setShowRejectBox(false);
+                setRejectComment('');
+              }}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="button-primary button-danger-solid"
+              disabled={saving !== null}
+              onClick={handleReject}
+              type="button"
+            >
+              {saving === 'reject' ? 'Rejecting…' : 'Confirm rejection'}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="review-page">
       <div className="review-header">
@@ -317,23 +432,112 @@ export function ExpenseReviewPage() {
         </div>
       )}
 
-      <div className="review-grid">
-        <div className="review-preview">
-          {!fileUrl ? (
-            <span className="preview-loading">Loading preview…</span>
-          ) : expense.mimeType?.startsWith('image/') ? (
-            <img src={fileUrl} alt="Invoice document" className="review-preview-image" />
-          ) : (
-            <a className="button-outline" href={fileUrl} target="_blank" rel="noreferrer">
-              Open document
-            </a>
-          )}
-        </div>
-
-        <div className="review-form">
+      {isMileage ? (
+        <div className="review-form review-form--standalone">
           <fieldset className="review-fieldset" disabled={!isEditable}>
             <div className="form-section">
-              <h3>Vendor</h3>
+              <h3>Trip</h3>
+              <div className="form-grid">
+                <label className="form-field">
+                  <span>Date</span>
+                  <input
+                    type="date"
+                    value={form.mileageDate}
+                    onChange={(e) => updateField('mileageDate', e.target.value)}
+                  />
+                </label>
+                <label className="form-field">
+                  <span>From</span>
+                  <input value={form.mileageFrom} onChange={(e) => updateField('mileageFrom', e.target.value)} />
+                </label>
+                <label className="form-field">
+                  <span>To</span>
+                  <input value={form.mileageTo} onChange={(e) => updateField('mileageTo', e.target.value)} />
+                </label>
+                <label className="form-field">
+                  <span>Distance (km)</span>
+                  <div className="distance-input-row">
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={form.mileageDistanceKm}
+                      onChange={(e) => updateField('mileageDistanceKm', e.target.value)}
+                    />
+                    <button
+                      className="button-outline"
+                      type="button"
+                      disabled={calculatingDistance || !form.mileageFrom.trim() || !form.mileageTo.trim()}
+                      onClick={handleCalculateDistance}
+                    >
+                      {calculatingDistance ? 'Calculating…' : 'Calculate'}
+                    </button>
+                  </div>
+                </label>
+                <label className="form-field form-field--checkbox">
+                  <input
+                    type="checkbox"
+                    checked={form.mileageRoundTrip}
+                    onChange={(e) => updateField('mileageRoundTrip', e.target.checked)}
+                  />
+                  <span>Round trip</span>
+                </label>
+              </div>
+              {distanceError && (
+                <div className="alert alert-error alert-inline">
+                  <span>{distanceError}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="form-section">
+              <h3>Details</h3>
+              <div className="form-grid">
+                <label className="form-field">
+                  <span>Category</span>
+                  <select value={form.categoryId} onChange={(e) => updateField('categoryId', e.target.value)}>
+                    <option value="">Uncategorized</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>Total (calculated automatically)</span>
+                  <input value={expense.totalAmount ?? '—'} disabled />
+                </label>
+              </div>
+            </div>
+
+            <div className="form-section">
+              <label className="form-field form-field--wide">
+                <span>Notes</span>
+                <textarea rows={3} value={form.notes} onChange={(e) => updateField('notes', e.target.value)} />
+              </label>
+            </div>
+          </fieldset>
+
+          {actionBar}
+        </div>
+      ) : (
+        <div className="review-grid">
+          <div className="review-preview">
+            {!fileUrl ? (
+              <span className="preview-loading">Loading preview…</span>
+            ) : expense.mimeType?.startsWith('image/') ? (
+              <img src={fileUrl} alt="Invoice document" className="review-preview-image" />
+            ) : (
+              <a className="button-outline" href={fileUrl} target="_blank" rel="noreferrer">
+                Open document
+              </a>
+            )}
+          </div>
+
+          <div className="review-form">
+            <fieldset className="review-fieldset" disabled={!isEditable}>
+              <div className="form-section">
+                <h3>Vendor</h3>
               <div className="form-grid">
                 <label className="form-field">
                   <span>Vendor name</span>
@@ -485,75 +689,10 @@ export function ExpenseReviewPage() {
             </div>
           </fieldset>
 
-          {isEditable && (
-            <div className="action-bar">
-              <button className="button-outline" disabled={saving !== null} onClick={handleSaveDraft} type="button">
-                {saving === 'draft' ? 'Saving…' : 'Save draft'}
-              </button>
-              <button
-                className="button-primary"
-                disabled={saving !== null}
-                onClick={handleSubmitForApproval}
-                type="button"
-              >
-                {saving === 'submit' ? 'Submitting…' : 'Submit for approval'}
-              </button>
-            </div>
-          )}
-
-          {isMyApproval && !showRejectBox && (
-            <div className="action-bar">
-              <button
-                className="button-outline button-danger"
-                disabled={saving !== null}
-                onClick={() => setShowRejectBox(true)}
-                type="button"
-              >
-                Reject
-              </button>
-              <button className="button-primary" disabled={saving !== null} onClick={handleApprove} type="button">
-                {saving === 'approve' ? 'Approving…' : 'Approve'}
-              </button>
-            </div>
-          )}
-
-          {isMyApproval && showRejectBox && (
-            <div className="reject-box">
-              <label className="form-field form-field--wide">
-                <span>Reason for rejecting</span>
-                <textarea
-                  rows={3}
-                  autoFocus
-                  value={rejectComment}
-                  onChange={(e) => setRejectComment(e.target.value)}
-                  placeholder="Let the submitter know what needs to change…"
-                />
-              </label>
-              <div className="action-bar">
-                <button
-                  className="button-outline"
-                  disabled={saving !== null}
-                  onClick={() => {
-                    setShowRejectBox(false);
-                    setRejectComment('');
-                  }}
-                  type="button"
-                >
-                  Cancel
-                </button>
-                <button
-                  className="button-primary button-danger-solid"
-                  disabled={saving !== null}
-                  onClick={handleReject}
-                  type="button"
-                >
-                  {saving === 'reject' ? 'Rejecting…' : 'Confirm rejection'}
-                </button>
-              </div>
-            </div>
-          )}
+            {actionBar}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

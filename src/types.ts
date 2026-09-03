@@ -40,8 +40,8 @@ export type Approval = {
 
 // Mirrors the backend's Expense model (backend/prisma/schema.prisma). Numeric
 // money fields come back as strings — Prisma serializes Decimal via toJSON().
-// Only expenseType "RECEIPT" is fully supported in the UI today; the others
-// are reserved on the model for when mileage/per-diem/general expenses land.
+// expenseType "RECEIPT" and "MILEAGE" are fully supported in the UI; PER_DIEM
+// and GENERAL are reserved on the model for later.
 export type Expense = {
   id: string;
   status: ExpenseStatus;
@@ -66,6 +66,11 @@ export type Expense = {
   isDuplicate: boolean;
   duplicateOfId: string | null;
   errorMessage: string | null;
+  mileageDate: string | null;
+  mileageFrom: string | null;
+  mileageTo: string | null;
+  mileageDistanceKm: string | null;
+  mileageRoundTrip: boolean;
   category: Category | null;
   items: ExpenseLineItem[];
   approvals: Approval[];

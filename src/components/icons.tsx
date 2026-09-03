@@ -63,6 +63,20 @@ export function IconUpload({ className }: IconProps) {
   );
 }
 
+export function IconCar({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M5 11l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 11m-14 0h14m-14 0a2 2 0 00-2 2v4a1 1 0 001 1h1m14-7a2 2 0 012 2v4a1 1 0 01-1 1h-1m-14 0a2 2 0 004 0m-4 0v-2m14 2a2 2 0 01-4 0m4 0v-2M9 15h6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function IconLogout({ className }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

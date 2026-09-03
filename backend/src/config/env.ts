@@ -15,5 +15,8 @@ export const env = {
   n8nExtractPath: required('N8N_EXTRACT_PATH', '/webhook/invoice-ocr-mistral'),
   uploadsDir: required('UPLOADS_DIR', './uploads'),
   corsOrigin: required('CORS_ORIGIN', 'http://localhost:5173'),
-  jwtSecret: required('JWT_SECRET', 'dev-only-insecure-secret-change-me')
+  jwtSecret: required('JWT_SECRET', 'dev-only-insecure-secret-change-me'),
+  // Optional on purpose: map-assisted mileage distance is a feature, not a
+  // boot requirement — manual distance entry works with no key at all.
+  googleDirectionsApiKey: process.env.GOOGLE_DIRECTIONS_API_KEY || null
 };

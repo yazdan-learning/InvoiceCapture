@@ -13,6 +13,19 @@ function formatAmount(amount: string | null, currency: string | null) {
   return currency ? `${formatted} ${currency}` : formatted;
 }
 
+function expenseLabel(expense: Expense): string {
+  if (expense.expenseType === 'MILEAGE') {
+    return expense.mileageFrom && expense.mileageTo
+      ? `${expense.mileageFrom} → ${expense.mileageTo}`
+      : 'Mileage';
+  }
+  return expense.vendorName || 'Unknown vendor';
+}
+
+function expenseDate(expense: Expense): string | null {
+  return expense.expenseType === 'MILEAGE' ? expense.mileageDate : expense.invoiceDate;
+}
+
 export function ApprovalQueuePage() {
   const navigate = useNavigate();
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -72,12 +85,12 @@ export function ApprovalQueuePage() {
                   <tr key={expense.id} onClick={() => navigate(`/expenses/${expense.id}`)}>
                     <td>{expense.uploader.name}</td>
                     <td>
-                      <span className="vendor-name" title={expense.vendorName || 'Unknown vendor'}>
-                        {expense.vendorName || 'Unknown vendor'}
+                      <span className="vendor-name" title={expenseLabel(expense)}>
+                        {expenseLabel(expense)}
                       </span>
                     </td>
-                    <td>{expense.invoiceNumber || '—'}</td>
-                    <td>{expense.invoiceDate ? new Date(expense.invoiceDate).toLocaleDateString() : '—'}</td>
+                    <td>{expense.expenseType === 'MILEAGE' ? '—' : expense.invoiceNumber || '—'}</td>
+                    <td>{expenseDate(expense) ? new Date(expenseDate(expense)!).toLocaleDateString() : '—'}</td>
                     <td className="align-right amount-cell">{formatAmount(expense.totalAmount, expense.currency)}</td>
                     <td>
                       <StatusPill status={expense.status} />
@@ -92,13 +105,13 @@ export function ApprovalQueuePage() {
             {expenses.map((expense) => (
               <div key={expense.id} className="invoice-card" onClick={() => navigate(`/expenses/${expense.id}`)}>
                 <div className="invoice-card-top">
-                  <span className="invoice-card-vendor">{expense.vendorName || 'Unknown vendor'}</span>
+                  <span className="invoice-card-vendor">{expenseLabel(expense)}</span>
                   <StatusPill status={expense.status} />
                 </div>
                 <div className="invoice-card-amount">{formatAmount(expense.totalAmount, expense.currency)}</div>
                 <div className="invoice-card-meta">
                   <span>submitted by {expense.uploader.name}</span>
-                  <span>{expense.invoiceDate ? new Date(expense.invoiceDate).toLocaleDateString() : '—'}</span>
+                  <span>{expenseDate(expense) ? new Date(expenseDate(expense)!).toLocaleDateString() : '—'}</span>
                 </div>
               </div>
             ))}

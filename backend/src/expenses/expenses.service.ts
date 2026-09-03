@@ -3,8 +3,8 @@ import { ExpenseStatus, Prisma } from '@prisma/client';
 import { NotFoundError, BadRequestError } from '../shared/errors';
 import { toCsv } from '../shared/csv';
 import { expensesRepository, LineItemInput } from './expenses.repository';
-import { ApproverResolver, FileStorage, InvoiceExtractor, UploadedFile } from './ports';
-import { ListExpensesQuery, UpdateExpenseInput } from './expenses.schema';
+import { ApproverResolver, DistanceCalculator, FileStorage, InvoiceExtractor, UploadedFile } from './ports';
+import { CreateMileageInput, ListExpensesQuery, UpdateExpenseInput } from './expenses.schema';
 
 function toDate(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -32,9 +32,28 @@ type Deps = {
   extractor: InvoiceExtractor;
   fileStorage: FileStorage;
   approverResolver: ApproverResolver;
+  distanceCalculator: DistanceCalculator;
 };
 
-export function createExpensesService({ extractor, fileStorage, approverResolver }: Deps) {
+// mileageDistanceKm always stores the one-way distance; the round-trip factor
+// is applied here, at the single point where totalAmount is derived, so an
+// edit can never accidentally double- (or halve-) count it.
+function computeMileageTotal(distanceKm: number, roundTrip: boolean, ratePerKm: number): number {
+  return (roundTrip ? distanceKm * 2 : distanceKm) * ratePerKm;
+}
+
+export function createExpensesService({ extractor, fileStorage, approverResolver, distanceCalculator }: Deps) {
+  // The calculator throws plain Errors (not set up, no route found, etc.) —
+  // rethrow as BadRequestError so the real message reaches the client instead
+  // of being masked as a 500 by the global error handler.
+  async function resolveDistance(from: string, to: string) {
+    try {
+      return await distanceCalculator.getDistance(from, to);
+    } catch (err) {
+      throw new BadRequestError(err instanceof Error ? err.message : 'Could not calculate distance');
+    }
+  }
+
   return {
     async uploadAndExtract(organizationId: string, userId: string, file: UploadedFile) {
       const expenseId = randomUUID();
@@ -101,6 +120,36 @@ export function createExpensesService({ extractor, fileStorage, approverResolver
       });
     },
 
+    async createMileageExpense(organizationId: string, userId: string, input: CreateMileageInput) {
+      const distanceKm =
+        input.distanceKm ?? (await resolveDistance(input.from as string, input.to as string)).distanceKm;
+
+      const ratePerKm = await expensesRepository.getOrganizationMileageRate(organizationId);
+      const totalAmount = computeMileageTotal(distanceKm, input.roundTrip, ratePerKm);
+
+      return expensesRepository.create({
+        id: randomUUID(),
+        organizationId,
+        uploadedBy: userId,
+        expenseType: 'MILEAGE',
+        status: 'EXTRACTED',
+        mileageDate: input.date,
+        mileageFrom: input.from ?? null,
+        mileageTo: input.to ?? null,
+        mileageDistanceKm: distanceKm,
+        mileageRoundTrip: input.roundTrip,
+        totalAmount,
+        categoryId: input.categoryId ?? null,
+        notes: input.notes ?? null,
+        isDuplicate: false,
+        items: []
+      });
+    },
+
+    getDistancePreview(from: string, to: string) {
+      return resolveDistance(from, to);
+    },
+
     async list(organizationId: string, filters: ListExpensesQuery, actor: Actor) {
       const scoped = actor.role === 'ADMIN' ? filters : { ...filters, uploadedBy: actor.userId };
       const [expenses, total] = await expensesRepository.list(organizationId, scoped);
@@ -132,6 +181,15 @@ export function createExpensesService({ extractor, fileStorage, approverResolver
       }
 
       const { items, ...fields } = patch;
+
+      // totalAmount is never trusted from the client for mileage — always
+      // re-derived from the (possibly just-edited) distance/round-trip fields.
+      if (existing.expenseType === 'MILEAGE') {
+        const distanceKm = fields.mileageDistanceKm ?? Number(existing.mileageDistanceKm ?? 0);
+        const roundTrip = fields.mileageRoundTrip ?? existing.mileageRoundTrip;
+        const ratePerKm = await expensesRepository.getOrganizationMileageRate(organizationId);
+        (fields as Record<string, unknown>).totalAmount = computeMileageTotal(distanceKm, roundTrip, ratePerKm);
+      }
 
       return expensesRepository.update(id, fields as Prisma.ExpenseUpdateInput, items);
     },

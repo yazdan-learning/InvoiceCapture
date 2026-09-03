@@ -15,6 +15,21 @@ export function createExpensesController(expensesService: ExpensesService) {
       res.status(201).json(expense);
     },
 
+    async createMileage(req: Request, res: Response) {
+      const expense = await expensesService.createMileageExpense(
+        req.actor.organizationId,
+        req.actor.userId,
+        req.body
+      );
+      res.status(201).json(expense);
+    },
+
+    async previewMileageDistance(req: Request, res: Response) {
+      const { from, to } = req.body as { from: string; to: string };
+      const result = await expensesService.getDistancePreview(from, to);
+      res.json(result);
+    },
+
     async list(req: Request, res: Response) {
       const query = req.query as unknown as {
         status?: ExpenseStatus;

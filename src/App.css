@@ -103,6 +103,62 @@ h1 {
 }
 
 /* Upload Card */
+.expense-type-chooser {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.expense-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 28px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.expense-type-card:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.12);
+}
+
+.expense-type-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #3b82f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.expense-type-card-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.expense-type-card h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.expense-type-card p {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
 .upload-card {
   width: 100%;
   max-width: 640px;
@@ -657,8 +713,8 @@ h1 {
     padding: 16px;
   }
 
-  .button-primary,
-  .button-outline {
+  .action-bar .button-primary,
+  .action-bar .button-outline {
     width: 100%;
     justify-content: center;
   }
@@ -1130,6 +1186,38 @@ h1 {
 
 .form-field textarea {
   resize: vertical;
+}
+
+.form-field--checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-field--checkbox input {
+  width: auto;
+}
+
+.review-form--standalone {
+  max-width: 640px;
+}
+
+.distance-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.distance-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.distance-input-row .button-outline {
+  white-space: nowrap;
+}
+
+.alert-inline {
+  margin: 12px 0 0;
 }
 
 @media (max-width: 900px) {

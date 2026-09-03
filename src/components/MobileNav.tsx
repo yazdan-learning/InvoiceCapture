@@ -67,7 +67,7 @@ export function MobileBottomNav({ user }: { user: AuthUser }) {
       </Link>
       <Link to="/upload" className="mobile-tab mobile-tab--upload">
         <IconUpload className="mobile-tab-icon" />
-        <span>Upload</span>
+        <span>Add</span>
       </Link>
       <Link to="/expenses" className={`mobile-tab ${isExpensesActive ? 'mobile-tab--active' : ''}`}>
         <IconExpenses className="mobile-tab-icon" />

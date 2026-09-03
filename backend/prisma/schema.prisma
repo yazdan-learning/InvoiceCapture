@@ -12,6 +12,11 @@ model Organization {
   name      String
   createdAt DateTime @default(now())
 
+  // Reimbursement rate is company policy, not something an employee types in
+  // per trip — see mileage creation logic. Single flat rate for v1 (no
+  // per-vehicle-type or per-country tiers yet).
+  mileageRatePerKm Decimal @default(0.30) @db.Decimal(6, 3)
+
   users      User[]
   expenses   Expense[]
   categories Category[]
@@ -121,6 +126,16 @@ model Expense {
 
   rawExtraction Json?
   errorMessage  String?
+
+  // Mileage — only populated for MILEAGE-type expenses. mileageDistanceKm is
+  // always the one-way distance; totalAmount is always server-derived from
+  // distance × (roundTrip ? 2 : 1) × Organization.mileageRatePerKm, never
+  // taken from the client, so the rate can't be gamed per-entry.
+  mileageDate       DateTime?
+  mileageFrom       String?
+  mileageTo         String?
+  mileageDistanceKm Decimal?  @db.Decimal(8, 2)
+  mileageRoundTrip  Boolean   @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

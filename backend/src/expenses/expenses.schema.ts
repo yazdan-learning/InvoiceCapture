@@ -46,7 +46,36 @@ export const updateExpenseSchema = z.object({
   paymentTerms: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   categoryId: z.string().uuid().nullable().optional(),
-  items: z.array(lineItemSchema).optional()
+  items: z.array(lineItemSchema).optional(),
+  // Editable after creation regardless of how the distance was first
+  // populated (typed, or map-calculated) — totalAmount is always re-derived
+  // server-side from these, never trusted from the client.
+  mileageDate: z.coerce.date().nullable().optional(),
+  mileageFrom: z.string().nullable().optional(),
+  mileageTo: z.string().nullable().optional(),
+  mileageDistanceKm: z.number().positive().nullable().optional(),
+  mileageRoundTrip: z.boolean().optional()
+});
+
+// One-way distance is either given directly, or calculated from from/to via
+// the DistanceCalculator port — never both required.
+export const createMileageSchema = z
+  .object({
+    date: z.coerce.date(),
+    from: z.string().trim().min(1).optional(),
+    to: z.string().trim().min(1).optional(),
+    distanceKm: z.number().positive().optional(),
+    roundTrip: z.boolean().default(false),
+    categoryId: z.string().uuid().nullable().optional(),
+    notes: z.string().nullable().optional()
+  })
+  .refine((data) => data.distanceKm != null || (data.from && data.to), {
+    message: 'Provide either a distance, or both From and To locations'
+  });
+
+export const mileageDistancePreviewSchema = z.object({
+  from: z.string().trim().min(1),
+  to: z.string().trim().min(1)
 });
 
 export const approveSchema = z.object({
@@ -61,3 +90,5 @@ export const rejectSchema = z.object({
 export type UpdateExpenseInput = z.infer<typeof updateExpenseSchema>;
 export type ListExpensesQuery = z.infer<typeof listExpensesQuerySchema>;
 export type ExportExpensesQuery = z.infer<typeof exportExpensesQuerySchema>;
+export type CreateMileageInput = z.infer<typeof createMileageSchema>;
+export type MileageDistancePreviewInput = z.infer<typeof mileageDistancePreviewSchema>;

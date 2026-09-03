@@ -9,7 +9,8 @@ type SidebarProps = {
 };
 
 export function Sidebar({ user, currentPath, onLogout }: SidebarProps) {
-  const isExpensesActive = currentPath === '/expenses' || currentPath.startsWith('/expenses/') || currentPath === '/upload';
+  const isExpensesActive =
+    currentPath === '/expenses' || currentPath.startsWith('/expenses/') || currentPath.startsWith('/upload');
 
   return (
     <aside className="sidebar">

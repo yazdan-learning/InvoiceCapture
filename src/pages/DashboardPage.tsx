@@ -21,6 +21,15 @@ function countLabel(count: number) {
   return count >= PREVIEW_SIZE ? `${count}+` : String(count);
 }
 
+function expenseLabel(expense: Expense): string {
+  if (expense.expenseType === 'MILEAGE') {
+    return expense.mileageFrom && expense.mileageTo
+      ? `${expense.mileageFrom} → ${expense.mileageTo}`
+      : 'Mileage';
+  }
+  return expense.vendorName || 'Unknown vendor';
+}
+
 export function DashboardPage() {
   const { user } = useAuth();
   const [toReview, setToReview] = useState<Expense[]>([]);
@@ -61,7 +70,7 @@ export function DashboardPage() {
         </div>
         <Link className="button-primary" to="/upload">
           <IconUpload className="button-icon-inline" />
-          Upload Invoice
+          Add Expense
         </Link>
       </div>
 
@@ -106,7 +115,7 @@ export function DashboardPage() {
             {queue.map((expense) => (
               <Link key={expense.id} to={`/expenses/${expense.id}`} className="attention-row">
                 <span className="attention-row-main">
-                  <span className="attention-row-vendor">{expense.vendorName || 'Unknown vendor'}</span>
+                  <span className="attention-row-vendor">{expenseLabel(expense)}</span>
                   <span className="attention-row-sub">submitted by {expense.uploader.name}</span>
                 </span>
                 <span className="attention-row-amount">{formatAmount(expense.totalAmount, expense.currency)}</span>
@@ -116,7 +125,7 @@ export function DashboardPage() {
             {attention.map((expense) => (
               <Link key={expense.id} to={`/expenses/${expense.id}`} className="attention-row">
                 <span className="attention-row-main">
-                  <span className="attention-row-vendor">{expense.vendorName || 'Unknown vendor'}</span>
+                  <span className="attention-row-vendor">{expenseLabel(expense)}</span>
                   {expense.status === 'REJECTED' && (
                     <span className="attention-row-sub">rejected — fix and resubmit</span>
                   )}
