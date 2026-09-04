@@ -89,6 +89,7 @@ unless `ADMIN`:
 | POST | `/api/expenses` | multipart upload (field `file`) → calls n8n → persists → returns Expense |
 | POST | `/api/expenses/mileage` | create a MILEAGE expense — `distanceKm` directly, or `from`/`to` to calculate it |
 | POST | `/api/expenses/mileage/distance` | preview distance/duration for `from`/`to` without creating an expense |
+| GET | `/api/expenses/mileage/rate` | current org's mileage reimbursement rate (for the FE's live total preview) |
 | GET | `/api/expenses` | list, filters: `status`, `search`, `page`, `pageSize` |
 | GET | `/api/expenses/:id` | single expense detail |
 | GET | `/api/expenses/:id/file` | the original uploaded document (RECEIPT type only) |
@@ -99,3 +100,11 @@ unless `ADMIN`:
 | GET | `/api/expenses/approvals/queue` | expenses awaiting the caller's decision |
 | GET | `/api/expenses/export?status=…` | CSV export |
 | GET | `/api/categories` | category list for the FE dropdown |
+
+Organization (`/api/organization`) — every route is ADMIN only (`requireAuth` + `requireRole('ADMIN')`
+applied once at the router mount in `app.ts`, not per-route):
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/organization/settings` | current org settings (currently just `mileageRatePerKm`) |
+| PATCH | `/api/organization/settings` | update org settings |

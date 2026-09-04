@@ -322,6 +322,11 @@ export function ExpenseReviewPage() {
       ? Number(form.mileageDistanceKm) * (form.mileageRoundTrip ? 2 : 1) * ratePerKm
       : null;
 
+  // Mirrors the backend's own check in submitForApproval ("cannot submit
+  // without a total amount") — disabling it here avoids a round-trip just to
+  // find that out for a bare mileage draft with no distance filled in yet.
+  const hasAmount = isMileage ? estimatedAmount != null : form.totalAmount.trim() !== '';
+
   const actionBar = (
     <>
       {isEditable && (
@@ -331,7 +336,7 @@ export function ExpenseReviewPage() {
           </button>
           <button
             className="button-primary"
-            disabled={saving !== null}
+            disabled={saving !== null || !hasAmount}
             onClick={handleSubmitForApproval}
             type="button"
           >

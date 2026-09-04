@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { AuthUser } from '../types';
-import { IconAdmin, IconApprovals, IconDashboard, IconExpenses, IconLogout } from './icons';
+import { IconAdmin, IconApprovals, IconDashboard, IconExpenses, IconLogout, IconSettings } from './icons';
 
 type SidebarProps = {
   user: AuthUser;
@@ -56,6 +56,13 @@ export function Sidebar({ user, currentPath, onLogout }: SidebarProps) {
           >
             <IconAdmin className="sidebar-link-icon" />
             Users
+          </Link>
+          <Link
+            to="/admin/settings"
+            className={`sidebar-link ${currentPath === '/admin/settings' ? 'sidebar-link--active' : ''}`}
+          >
+            <IconSettings className="sidebar-link-icon" />
+            Settings
           </Link>
         </div>
       )}

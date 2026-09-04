@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { AuthUser } from '../types';
-import { IconAdmin, IconApprovals, IconDashboard, IconExpenses, IconLogout, IconUpload } from './icons';
+import { IconAdmin, IconApprovals, IconDashboard, IconExpenses, IconLogout, IconSettings, IconUpload } from './icons';
 
 export function MobileTopBar({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const [open, setOpen] = useState(false);
@@ -25,10 +25,16 @@ export function MobileTopBar({ user, onLogout }: { user: AuthUser; onLogout: () 
               <div className="mobile-user-dropdown-name">{user.name}</div>
               <span className="header-user-role">{user.role}</span>
               {user.role === 'ADMIN' && (
-                <Link to="/admin/users" className="mobile-user-dropdown-link" onClick={() => setOpen(false)}>
-                  <IconAdmin className="sidebar-link-icon" />
-                  Users
-                </Link>
+                <>
+                  <Link to="/admin/users" className="mobile-user-dropdown-link" onClick={() => setOpen(false)}>
+                    <IconAdmin className="sidebar-link-icon" />
+                    Users
+                  </Link>
+                  <Link to="/admin/settings" className="mobile-user-dropdown-link" onClick={() => setOpen(false)}>
+                    <IconSettings className="sidebar-link-icon" />
+                    Settings
+                  </Link>
+                </>
               )}
               <button
                 className="mobile-user-dropdown-link"

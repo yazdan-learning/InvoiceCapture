@@ -284,3 +284,24 @@ export async function createUser(payload: CreateUserPayload, apiBaseUrl = defaul
   });
   return parseJsonOrThrow(response);
 }
+
+export type OrganizationSettings = {
+  mileageRatePerKm: number;
+};
+
+export async function getOrganizationSettings(apiBaseUrl = defaultBaseUrl): Promise<OrganizationSettings> {
+  const response = await fetch(apiUrl('/api/organization/settings', apiBaseUrl), { headers: authHeaders() });
+  return parseJsonOrThrow(response);
+}
+
+export async function updateOrganizationSettings(
+  payload: OrganizationSettings,
+  apiBaseUrl = defaultBaseUrl
+): Promise<OrganizationSettings> {
+  const response = await fetch(apiUrl('/api/organization/settings', apiBaseUrl), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload)
+  });
+  return parseJsonOrThrow(response);
+}

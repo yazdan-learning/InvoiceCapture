@@ -9,6 +9,7 @@ import { ExpenseReviewPage } from './pages/ExpenseReviewPage';
 import { LoginPage } from './pages/LoginPage';
 import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
+import { AdminSettingsPage } from './pages/AdminSettingsPage';
 import { AppShell } from './components/AppShell';
 import { useAuth } from './auth/AuthContext';
 import { Role } from './types';
@@ -100,6 +101,16 @@ function App() {
           <Protected>
             <RequireRole roles={['ADMIN']}>
               <AdminUsersPage />
+            </RequireRole>
+          </Protected>
+        }
+      />
+      <Route
+        path="/admin/settings"
+        element={
+          <Protected>
+            <RequireRole roles={['ADMIN']}>
+              <AdminSettingsPage />
             </RequireRole>
           </Protected>
         }

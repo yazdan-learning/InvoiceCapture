@@ -3,9 +3,10 @@ import cors from 'cors';
 import multer from 'multer';
 import { env } from './config/env';
 import { authRouter } from './auth/auth.routes';
-import { requireAuth } from './auth/auth.middleware';
+import { requireAuth, requireRole } from './auth/auth.middleware';
 import { expensesRouter } from './expenses/expenses.routes';
 import { categoriesRouter } from './categories/categories.routes';
+import { organizationRouter } from './organization/organization.routes';
 import { AppError } from './shared/errors';
 
 export const app = express();
@@ -20,6 +21,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/api/auth', authRouter);
 app.use('/api/expenses', requireAuth, expensesRouter);
 app.use('/api/categories', requireAuth, categoriesRouter);
+app.use('/api/organization', requireAuth, requireRole('ADMIN'), organizationRouter);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof AppError) {

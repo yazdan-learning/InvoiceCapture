@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createMileageExpense, getCategories, getMileageRate, previewMileageDistance } from '../api';
+import { createMileageExpense, getCategories, getMileageRate, previewMileageDistance, submitExpense } from '../api';
 import { Category } from '../types';
 import { LocationAutocompleteInput } from '../components/LocationAutocompleteInput';
 import { RouteMap } from '../components/RouteMap';
@@ -67,25 +67,52 @@ export function MileageEntryPage() {
     runCalculate(from, to);
   };
 
-  const canSubmit = date && (distanceKm.trim() !== '' || (from.trim() && to.trim()));
+  // A draft can be saved with nothing but a date — you finish it later on the
+  // review page. Submitting for approval needs a real amount, same rule the
+  // backend enforces (submitForApproval rejects a null totalAmount) — this
+  // just surfaces it as a disabled button instead of a failed request.
+  const canSubmitForApproval = distanceKm.trim() !== '' || (from.trim() && to.trim());
 
-  const handleSubmit = async () => {
-    if (!canSubmit) return;
+  const buildCreatePayload = () => ({
+    date,
+    from: from.trim() || undefined,
+    to: to.trim() || undefined,
+    distanceKm: distanceKm.trim() !== '' ? Number(distanceKm) : undefined,
+    roundTrip,
+    categoryId: categoryId || null,
+    notes: notes.trim() || null
+  });
+
+  const handleSaveDraft = async () => {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const expense = await createMileageExpense({
-        date,
-        from: from.trim() || undefined,
-        to: to.trim() || undefined,
-        distanceKm: distanceKm.trim() !== '' ? Number(distanceKm) : undefined,
-        roundTrip,
-        categoryId: categoryId || null,
-        notes: notes.trim() || null
-      });
+      const expense = await createMileageExpense(buildCreatePayload());
       navigate(`/expenses/${expense.id}`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to save mileage expense');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmitForApproval = async () => {
+    if (!canSubmitForApproval) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const expense = await createMileageExpense(buildCreatePayload());
+      try {
+        await submitExpense(expense.id);
+        navigate('/expenses');
+      } catch {
+        // Created fine, but the submit step failed (e.g. no approver set up) —
+        // go to the review page to retry from there rather than risk creating
+        // a second expense by trying again from this form.
+        navigate(`/expenses/${expense.id}`);
+      }
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to submit mileage expense');
     } finally {
       setSubmitting(false);
     }
@@ -179,15 +206,25 @@ export function MileageEntryPage() {
       <div className="action-bar action-bar--with-total">
         {estimatedAmount != null && (
           <span className="estimated-total">
-            <span className="estimated-total-label">Estimated amount</span>
+            <span className="estimated-total-label">Amount</span>
             <span className="estimated-total-value">
               {estimatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </span>
         )}
-        <button className="button-primary" type="button" disabled={!canSubmit || submitting} onClick={handleSubmit}>
-          {submitting ? 'Calculating…' : 'Calculate Mileage Expense'}
-        </button>
+        <span className="action-bar-buttons">
+          <button className="button-outline" type="button" disabled={submitting} onClick={handleSaveDraft}>
+            {submitting ? 'Saving…' : 'Save draft'}
+          </button>
+          <button
+            className="button-primary"
+            type="button"
+            disabled={!canSubmitForApproval || submitting}
+            onClick={handleSubmitForApproval}
+          >
+            {submitting ? 'Submitting…' : 'Submit for approval'}
+          </button>
+        </span>
       </div>
     </div>
   );

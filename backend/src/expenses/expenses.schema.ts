@@ -57,21 +57,21 @@ export const updateExpenseSchema = z.object({
   mileageRoundTrip: z.boolean().optional()
 });
 
-// One-way distance is either given directly, or calculated from from/to via
-// the DistanceCalculator port — never both required.
-export const createMileageSchema = z
-  .object({
-    date: z.coerce.date(),
-    from: z.string().trim().min(1).optional(),
-    to: z.string().trim().min(1).optional(),
-    distanceKm: z.number().positive().optional(),
-    roundTrip: z.boolean().default(false),
-    categoryId: z.string().uuid().nullable().optional(),
-    notes: z.string().nullable().optional()
-  })
-  .refine((data) => data.distanceKm != null || (data.from && data.to), {
-    message: 'Provide either a distance, or both From and To locations'
-  });
+// Distance is optional at creation time — saving a draft with just a date
+// (nothing else filled in yet) is allowed, same as a receipt can exist with
+// every extracted field still null. One-way distance, when present, is
+// either given directly or calculated from from/to via the DistanceCalculator
+// port. submitForApproval is what actually enforces a total amount exists —
+// this schema only shapes the input, it doesn't decide what's submittable.
+export const createMileageSchema = z.object({
+  date: z.coerce.date(),
+  from: z.string().trim().min(1).optional(),
+  to: z.string().trim().min(1).optional(),
+  distanceKm: z.number().positive().optional(),
+  roundTrip: z.boolean().default(false),
+  categoryId: z.string().uuid().nullable().optional(),
+  notes: z.string().nullable().optional()
+});
 
 export const mileageDistancePreviewSchema = z.object({
   from: z.string().trim().min(1),

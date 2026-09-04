@@ -121,11 +121,16 @@ export function createExpensesService({ extractor, fileStorage, approverResolver
     },
 
     async createMileageExpense(organizationId: string, userId: string, input: CreateMileageInput) {
-      const distanceKm =
-        input.distanceKm ?? (await resolveDistance(input.from as string, input.to as string)).distanceKm;
+      let distanceKm: number | null = input.distanceKm ?? null;
+      if (distanceKm == null && input.from && input.to) {
+        distanceKm = (await resolveDistance(input.from, input.to)).distanceKm;
+      }
 
-      const ratePerKm = await expensesRepository.getOrganizationMileageRate(organizationId);
-      const totalAmount = computeMileageTotal(distanceKm, input.roundTrip, ratePerKm);
+      let totalAmount: number | null = null;
+      if (distanceKm != null) {
+        const ratePerKm = await expensesRepository.getOrganizationMileageRate(organizationId);
+        totalAmount = computeMileageTotal(distanceKm, input.roundTrip, ratePerKm);
+      }
 
       return expensesRepository.create({
         id: randomUUID(),
