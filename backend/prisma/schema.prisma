@@ -17,6 +17,11 @@ model Organization {
   // per-vehicle-type or per-country tiers yet).
   mileageRatePerKm Decimal @default(0.30) @db.Decimal(6, 3)
 
+  // Extracted receipts get auto-converted into this currency; mileage
+  // reimbursement is implicitly denominated in it too (no conversion needed
+  // there — the rate above is already set in whatever currency this is).
+  defaultCurrency String @default("EUR")
+
   users      User[]
   expenses   Expense[]
   categories Category[]
@@ -120,6 +125,19 @@ model Expense {
   paymentMethod String?
   paymentTerms  String?
   notes         String?
+
+  // Snapshot of what was actually on the invoice before any currency
+  // conversion — written once at extraction time, never touched by later
+  // edits. subtotal/taxAmount/totalAmount above become the converted
+  // (org.defaultCurrency) values when conversion happens; these three plus
+  // originalCurrency are what "revert to the original" restores. taxRate is a
+  // percentage, not a money figure, so it doesn't need an original either.
+  originalCurrency    String?
+  originalSubtotal    Decimal? @db.Decimal(12, 2)
+  originalTaxAmount   Decimal? @db.Decimal(12, 2)
+  originalTotalAmount Decimal? @db.Decimal(12, 2)
+  exchangeRate        Decimal? @db.Decimal(12, 6)
+  exchangeRateDate    DateTime?
 
   isDuplicate   Boolean @default(false)
   duplicateOfId String?

@@ -193,6 +193,16 @@ export async function getMileageRate(apiBaseUrl = defaultBaseUrl): Promise<{ rat
   return parseJsonOrThrow(response);
 }
 
+export type SupportedCurrencies = {
+  defaultCurrency: string;
+  supportedCurrencies: string[];
+};
+
+export async function getSupportedCurrencies(apiBaseUrl = defaultBaseUrl): Promise<SupportedCurrencies> {
+  const response = await fetch(apiUrl('/api/expenses/currencies', apiBaseUrl), { headers: authHeaders() });
+  return parseJsonOrThrow(response);
+}
+
 export async function getCategories(apiBaseUrl = defaultBaseUrl): Promise<Category[]> {
   const response = await fetch(apiUrl('/api/categories', apiBaseUrl), { headers: authHeaders() });
   return parseJsonOrThrow(response);
@@ -287,6 +297,18 @@ export async function createUser(payload: CreateUserPayload, apiBaseUrl = defaul
 
 export type OrganizationSettings = {
   mileageRatePerKm: number;
+  defaultCurrency: string;
+  supportedCurrencies: string[];
+};
+
+export type UpdateOrganizationSettingsPayload = Partial<{
+  mileageRatePerKm: number;
+  defaultCurrency: string;
+}>;
+
+export type UpdatedOrganizationSettings = {
+  mileageRatePerKm: number;
+  defaultCurrency: string;
 };
 
 export async function getOrganizationSettings(apiBaseUrl = defaultBaseUrl): Promise<OrganizationSettings> {
@@ -295,9 +317,9 @@ export async function getOrganizationSettings(apiBaseUrl = defaultBaseUrl): Prom
 }
 
 export async function updateOrganizationSettings(
-  payload: OrganizationSettings,
+  payload: UpdateOrganizationSettingsPayload,
   apiBaseUrl = defaultBaseUrl
-): Promise<OrganizationSettings> {
+): Promise<UpdatedOrganizationSettings> {
   const response = await fetch(apiUrl('/api/organization/settings', apiBaseUrl), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },

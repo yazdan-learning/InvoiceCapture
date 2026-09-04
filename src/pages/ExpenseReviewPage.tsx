@@ -6,6 +6,7 @@ import {
   getExpense,
   getExpenseFileBlobUrl,
   getMileageRate,
+  getSupportedCurrencies,
   previewMileageDistance,
   submitExpense,
   updateExpense
@@ -113,6 +114,7 @@ export function ExpenseReviewPage() {
   const [distanceError, setDistanceError] = useState<string | null>(null);
   const [routeQuery, setRouteQuery] = useState<{ from: string; to: string } | null>(null);
   const [ratePerKm, setRatePerKm] = useState<number | null>(null);
+  const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
   const lastCalculatedRef = useRef<{ from: string; to: string } | null>(null);
 
   const load = () => {
@@ -129,6 +131,11 @@ export function ExpenseReviewPage() {
         }
         if (inv.expenseType === 'MILEAGE') {
           getMileageRate().then((r) => setRatePerKm(r.ratePerKm)).catch(() => setRatePerKm(null));
+        }
+        if (inv.expenseType === 'RECEIPT') {
+          getSupportedCurrencies()
+            .then((r) => setSupportedCurrencies(r.supportedCurrencies))
+            .catch(() => setSupportedCurrencies([]));
         }
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load expense'))
@@ -159,6 +166,23 @@ export function ExpenseReviewPage() {
 
   const updateField = (field: keyof FormState, value: string | boolean) => {
     setForm((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
+
+  // Restores the invoice as it was actually captured, before conversion —
+  // a one-click alternative to manually retyping all four fields back.
+  const useOriginalAmounts = () => {
+    if (!expense) return;
+    setForm((prev) =>
+      prev
+        ? {
+            ...prev,
+            currency: expense.originalCurrency ?? prev.currency,
+            subtotal: expense.originalSubtotal ?? prev.subtotal,
+            taxAmount: expense.originalTaxAmount ?? prev.taxAmount,
+            totalAmount: expense.originalTotalAmount ?? prev.totalAmount
+          }
+        : prev
+    );
   };
 
   const isMileage = expense?.expenseType === 'MILEAGE';
@@ -686,7 +710,17 @@ export function ExpenseReviewPage() {
                 </label>
                 <label className="form-field">
                   <span>Currency</span>
-                  <input value={form.currency} onChange={(e) => updateField('currency', e.target.value)} placeholder="USD" />
+                  <select value={form.currency} onChange={(e) => updateField('currency', e.target.value)}>
+                    <option value="">—</option>
+                    {(form.currency && !supportedCurrencies.includes(form.currency)
+                      ? [form.currency, ...supportedCurrencies]
+                      : supportedCurrencies
+                    ).map((code) => (
+                      <option key={code} value={code}>
+                        {code}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="form-field">
                   <span>Payment method</span>
@@ -703,6 +737,25 @@ export function ExpenseReviewPage() {
                   />
                 </label>
               </div>
+              {expense.originalCurrency && expense.originalCurrency !== form.currency && (
+                <div className="alert alert-info alert-inline">
+                  <span>
+                    Originally captured as{' '}
+                    {expense.originalTotalAmount ?? '—'} {expense.originalCurrency}
+                    {expense.exchangeRate
+                      ? ` (converted at ${Number(expense.exchangeRate).toFixed(4)}${
+                          expense.exchangeRateDate ? ` on ${expense.exchangeRateDate.slice(0, 10)}` : ''
+                        })`
+                      : ''}
+                    .
+                  </span>
+                  {isEditable && (
+                    <button className="alert-action" type="button" onClick={useOriginalAmounts}>
+                      Use original
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {expense.items.length > 0 && (

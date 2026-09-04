@@ -1,14 +1,16 @@
 import { organizationRepository } from './organization.repository';
 import { UpdateOrganizationSettingsInput } from './organization.schema';
+import { SUPPORTED_CURRENCIES } from '../shared/currencies';
 
 export function createOrganizationService() {
   return {
-    getSettings(organizationId: string) {
-      return organizationRepository.get(organizationId);
+    async getSettings(organizationId: string) {
+      const settings = await organizationRepository.get(organizationId);
+      return { ...settings, supportedCurrencies: SUPPORTED_CURRENCIES };
     },
 
     updateSettings(organizationId: string, input: UpdateOrganizationSettingsInput) {
-      return organizationRepository.updateMileageRate(organizationId, input.mileageRatePerKm);
+      return organizationRepository.updateSettings(organizationId, input);
     }
   };
 }

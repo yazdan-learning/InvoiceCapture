@@ -90,6 +90,7 @@ unless `ADMIN`:
 | POST | `/api/expenses/mileage` | create a MILEAGE expense — `distanceKm` directly, or `from`/`to` to calculate it |
 | POST | `/api/expenses/mileage/distance` | preview distance/duration for `from`/`to` without creating an expense |
 | GET | `/api/expenses/mileage/rate` | current org's mileage reimbursement rate (for the FE's live total preview) |
+| GET | `/api/expenses/currencies` | org's default currency + the list of currencies conversion supports |
 | GET | `/api/expenses` | list, filters: `status`, `search`, `page`, `pageSize` |
 | GET | `/api/expenses/:id` | single expense detail |
 | GET | `/api/expenses/:id/file` | the original uploaded document (RECEIPT type only) |
@@ -106,5 +107,23 @@ applied once at the router mount in `app.ts`, not per-route):
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/organization/settings` | current org settings (currently just `mileageRatePerKm`) |
-| PATCH | `/api/organization/settings` | update org settings |
+| GET | `/api/organization/settings` | current org settings (`mileageRatePerKm`, `defaultCurrency`, `supportedCurrencies`) |
+| PATCH | `/api/organization/settings` | update org settings — either field, or both |
+
+## Multi-currency
+
+Extracted receipts get auto-converted into `Organization.defaultCurrency` if the extracted
+currency differs, using [Frankfurter](https://frankfurter.app) (a free, no-API-key wrapper
+around the ECB's daily reference rates — no env var needed, it just works). The rate used is
+the one for the **invoice's own date**, not the upload date — uploading a receipt a few days
+late still gets the rate that applied when the purchase happened, not today's. Frankfurter
+handles weekends/holidays itself (falls back to the nearest prior business day and reports
+which date it actually used); falls back to today's rate if the invoice date couldn't be
+extracted. The original captured currency/amounts are preserved (`Expense.original*` fields,
+written once at extraction, never touched by later edits) so the FE can offer "use the
+original" as a one-click revert. A conversion failure (FX API unreachable, unsupported
+currency) never blocks the upload — the expense is simply saved with its original currency
+untouched. Editing `currency`/`totalAmount`/etc. afterward via `PATCH` is a plain manual edit
+and does **not** retrigger conversion — conversion only ever happens automatically once, at
+extraction time. Mileage expenses are always tagged with the org's `defaultCurrency`
+directly (no conversion needed — the rate-per-km is already denominated in it).

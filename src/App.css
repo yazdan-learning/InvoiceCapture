@@ -1204,6 +1204,12 @@ h1 {
   margin-top: 10px;
 }
 
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
 .form-field {
   display: flex;
   flex-direction: column;

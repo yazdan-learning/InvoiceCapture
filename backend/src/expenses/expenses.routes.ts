@@ -9,6 +9,7 @@ import { N8nInvoiceExtractor } from './adapters/n8n-extractor';
 import { LocalDiskFileStorage } from './adapters/local-disk-storage';
 import { GoogleDirectionsCalculator } from './adapters/google-directions';
 import { UnconfiguredDistanceCalculator } from './adapters/unconfigured-distance-calculator';
+import { FrankfurterCurrencyConverter } from './adapters/frankfurter-currency-converter';
 import { asyncHandler } from '../shared/asyncHandler';
 import { validate } from '../shared/validate';
 import {
@@ -44,7 +45,8 @@ const expensesService = createExpensesService({
   approverResolver: authService,
   distanceCalculator: env.googleDirectionsApiKey
     ? new GoogleDirectionsCalculator(env.googleDirectionsApiKey)
-    : new UnconfiguredDistanceCalculator()
+    : new UnconfiguredDistanceCalculator(),
+  currencyConverter: new FrankfurterCurrencyConverter()
 });
 const expensesController = createExpensesController(expensesService);
 
@@ -52,8 +54,9 @@ export const expensesRouter = Router();
 
 expensesRouter.post('/', upload.single('file'), asyncHandler(expensesController.upload));
 
-// Must come before "/:id" or "mileage" gets parsed as an expense id.
+// Must come before "/:id" or "mileage"/"currencies" get parsed as an expense id.
 expensesRouter.get('/mileage/rate', asyncHandler(expensesController.getMileageRate));
+expensesRouter.get('/currencies', asyncHandler(expensesController.getSupportedCurrencies));
 
 expensesRouter.post(
   '/mileage/distance',

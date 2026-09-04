@@ -6,11 +6,17 @@ export function AdminSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [mileageRatePerKm, setMileageRatePerKm] = useState('');
+  const [defaultCurrency, setDefaultCurrency] = useState('');
+  const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     getOrganizationSettings()
-      .then((settings) => setMileageRatePerKm(String(settings.mileageRatePerKm)))
+      .then((settings) => {
+        setMileageRatePerKm(String(settings.mileageRatePerKm));
+        setDefaultCurrency(settings.defaultCurrency);
+        setSupportedCurrencies(settings.supportedCurrencies);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load settings'))
       .finally(() => setLoading(false));
   }, []);
@@ -27,8 +33,9 @@ export function AdminSettingsPage() {
     setError(null);
     setSuccessMessage(null);
     try {
-      const updated = await updateOrganizationSettings({ mileageRatePerKm: rate });
+      const updated = await updateOrganizationSettings({ mileageRatePerKm: rate, defaultCurrency });
       setMileageRatePerKm(String(updated.mileageRatePerKm));
+      setDefaultCurrency(updated.defaultCurrency);
       setSuccessMessage('Settings saved.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
@@ -58,26 +65,50 @@ export function AdminSettingsPage() {
         <div className="list-loading">Loading settings…</div>
       ) : (
         <div className="review-form">
-          <h3 style={{ marginBottom: 12 }}>Mileage</h3>
-          <form onSubmit={handleSubmit}>
-            <div className="form-grid">
-              <label className="form-field">
-                <span>Reimbursement rate (per km)</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={mileageRatePerKm}
-                  onChange={(e) => setMileageRatePerKm(e.target.value)}
-                  required
-                />
-              </label>
+          <form className="settings-form" onSubmit={handleSubmit}>
+            <div className="form-section">
+              <h3>Currency</h3>
+              <div className="form-grid">
+                <label className="form-field">
+                  <span>Default currency</span>
+                  <select value={defaultCurrency} onChange={(e) => setDefaultCurrency(e.target.value)}>
+                    {supportedCurrencies.map((code) => (
+                      <option key={code} value={code}>
+                        {code}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <p className="field-hint">
+                Extracted receipts in a different currency are automatically converted into this one — the
+                original captured amount stays visible and can be restored on the expense. Mileage
+                reimbursement is always in this currency.
+              </p>
             </div>
-            <p className="field-hint">
-              Applied to every mileage expense across the organization — distance × (round trip ? 2 : 1) × this
-              rate. Existing submitted expenses keep the total they were saved with; this only affects new and
-              edited ones.
-            </p>
+
+            <div className="form-section">
+              <h3>Mileage</h3>
+              <div className="form-grid">
+                <label className="form-field">
+                  <span>Reimbursement rate (per km)</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={mileageRatePerKm}
+                    onChange={(e) => setMileageRatePerKm(e.target.value)}
+                    required
+                  />
+                </label>
+              </div>
+              <p className="field-hint">
+                Applied to every mileage expense across the organization — distance × (round trip ? 2 : 1) × this
+                rate. Existing submitted expenses keep the total they were saved with; this only affects new and
+                edited ones.
+              </p>
+            </div>
+
             <div className="action-bar">
               <button className="button-primary" type="submit" disabled={saving}>
                 {saving ? 'Saving…' : 'Save settings'}

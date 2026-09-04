@@ -34,6 +34,12 @@ export type CreateExpenseInput = {
   paymentMethod?: string | null;
   paymentTerms?: string | null;
   notes?: string | null;
+  originalCurrency?: string | null;
+  originalSubtotal?: number | null;
+  originalTaxAmount?: number | null;
+  originalTotalAmount?: number | null;
+  exchangeRate?: number | null;
+  exchangeRateDate?: Date | null;
   isDuplicate: boolean;
   duplicateOfId?: string | null;
   rawExtraction?: Prisma.InputJsonValue;
@@ -175,5 +181,13 @@ export const expensesRepository = {
       select: { mileageRatePerKm: true }
     });
     return Number(org.mileageRatePerKm);
+  },
+
+  async getOrganizationDefaultCurrency(organizationId: string): Promise<string> {
+    const org = await prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { defaultCurrency: true }
+    });
+    return org.defaultCurrency;
   }
 };

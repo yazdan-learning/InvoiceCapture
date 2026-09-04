@@ -2,8 +2,16 @@ import { randomUUID } from 'crypto';
 import { ExpenseStatus, Prisma } from '@prisma/client';
 import { NotFoundError, BadRequestError } from '../shared/errors';
 import { toCsv } from '../shared/csv';
+import { SUPPORTED_CURRENCIES } from '../shared/currencies';
 import { expensesRepository, LineItemInput } from './expenses.repository';
-import { ApproverResolver, DistanceCalculator, FileStorage, InvoiceExtractor, UploadedFile } from './ports';
+import {
+  ApproverResolver,
+  CurrencyConverter,
+  DistanceCalculator,
+  FileStorage,
+  InvoiceExtractor,
+  UploadedFile
+} from './ports';
 import { CreateMileageInput, ListExpensesQuery, UpdateExpenseInput } from './expenses.schema';
 
 function toDate(value: string | null | undefined): Date | null {
@@ -33,6 +41,7 @@ type Deps = {
   fileStorage: FileStorage;
   approverResolver: ApproverResolver;
   distanceCalculator: DistanceCalculator;
+  currencyConverter: CurrencyConverter;
 };
 
 // mileageDistanceKm always stores the one-way distance; the round-trip factor
@@ -42,7 +51,13 @@ function computeMileageTotal(distanceKm: number, roundTrip: boolean, ratePerKm: 
   return (roundTrip ? distanceKm * 2 : distanceKm) * ratePerKm;
 }
 
-export function createExpensesService({ extractor, fileStorage, approverResolver, distanceCalculator }: Deps) {
+export function createExpensesService({
+  extractor,
+  fileStorage,
+  approverResolver,
+  distanceCalculator,
+  currencyConverter
+}: Deps) {
   // The calculator throws plain Errors (not set up, no route found, etc.) —
   // rethrow as BadRequestError so the real message reaches the client instead
   // of being masked as a 500 by the global error handler.
@@ -69,15 +84,59 @@ export function createExpensesService({ extractor, fileStorage, approverResolver
 
       const data = extraction?.success ? extraction.data : undefined;
       const status: ExpenseStatus = data ? 'EXTRACTED' : 'FAILED';
-      const totalAmount = data?.totalAmount ?? null;
 
+      // Always checked against the raw extracted amount, before any currency
+      // conversion below — otherwise day-to-day FX rate drift would make two
+      // uploads of the identical invoice silently stop matching as duplicates.
       const duplicate = data
         ? await expensesRepository.findPotentialDuplicate(organizationId, {
             vendorName: data.vendorName,
             invoiceNumber: data.invoiceNumber,
-            totalAmount
+            totalAmount: data.totalAmount ?? null
           })
         : null;
+
+      // Convert into the org's default currency if the extracted currency
+      // differs. originalCurrency/original*/exchangeRate* are written once
+      // here and never touched again — see the comment on update() for why
+      // later edits don't retrigger this. A conversion failure (FX API down,
+      // unsupported currency) never blocks the upload; the expense is simply
+      // saved with its original currency untouched.
+      let currency = data?.currency ?? null;
+      let subtotal = data?.subtotal ?? null;
+      let taxAmount = data?.taxAmount ?? null;
+      let totalAmount = data?.totalAmount ?? null;
+      let originalCurrency: string | null = null;
+      let originalSubtotal: number | null = null;
+      let originalTaxAmount: number | null = null;
+      let originalTotalAmount: number | null = null;
+      let exchangeRate: number | null = null;
+      let exchangeRateDate: Date | null = null;
+
+      if (data?.currency) {
+        const defaultCurrency = await expensesRepository.getOrganizationDefaultCurrency(organizationId);
+        if (data.currency !== defaultCurrency) {
+          try {
+            // Rate as of the invoice's own date, not today's — uploading a
+            // few days late shouldn't apply today's rate to an older purchase.
+            // Falls back to today's rate if the date couldn't be extracted.
+            const invoiceDate = toDate(data.invoiceDate) ?? undefined;
+            const { rate, asOf } = await currencyConverter.getRate(data.currency, defaultCurrency, invoiceDate);
+            originalCurrency = data.currency;
+            originalSubtotal = data.subtotal;
+            originalTaxAmount = data.taxAmount;
+            originalTotalAmount = data.totalAmount;
+            currency = defaultCurrency;
+            subtotal = data.subtotal != null ? data.subtotal * rate : null;
+            taxAmount = data.taxAmount != null ? data.taxAmount * rate : null;
+            totalAmount = data.totalAmount != null ? data.totalAmount * rate : null;
+            exchangeRate = rate;
+            exchangeRateDate = asOf;
+          } catch {
+            // Keep the original currency/amounts as extracted.
+          }
+        }
+      }
 
       const items: LineItemInput[] = (data?.items ?? []).map((item) => ({
         description: item.description,
@@ -104,14 +163,20 @@ export function createExpensesService({ extractor, fileStorage, approverResolver
         vendorTaxId: data?.vendorTaxId ?? null,
         customerName: data?.customerName ?? null,
         customerAddress: data?.customerAddress ?? null,
-        subtotal: data?.subtotal ?? null,
+        subtotal,
         taxRate: data?.taxRate ?? null,
-        taxAmount: data?.taxAmount ?? null,
+        taxAmount,
         totalAmount,
-        currency: data?.currency ?? null,
+        currency,
         paymentMethod: data?.paymentMethod ?? null,
         paymentTerms: data?.paymentTerms ?? null,
         notes: data?.notes ?? null,
+        originalCurrency,
+        originalSubtotal,
+        originalTaxAmount,
+        originalTotalAmount,
+        exchangeRate,
+        exchangeRateDate,
         isDuplicate: Boolean(duplicate),
         duplicateOfId: duplicate?.id ?? null,
         rawExtraction: extraction ? (extraction.raw as Prisma.InputJsonValue) : undefined,
@@ -121,6 +186,11 @@ export function createExpensesService({ extractor, fileStorage, approverResolver
     },
 
     async createMileageExpense(organizationId: string, userId: string, input: CreateMileageInput) {
+      // Mileage never has a foreign-currency source to convert from — the
+      // rate-per-km is already denominated in whatever the org's default
+      // currency is, so the expense is simply tagged with it directly.
+      const currency = await expensesRepository.getOrganizationDefaultCurrency(organizationId);
+
       let distanceKm: number | null = input.distanceKm ?? null;
       if (distanceKm == null && input.from && input.to) {
         distanceKm = (await resolveDistance(input.from, input.to)).distanceKm;
@@ -144,6 +214,7 @@ export function createExpensesService({ extractor, fileStorage, approverResolver
         mileageDistanceKm: distanceKm,
         mileageRoundTrip: input.roundTrip,
         totalAmount,
+        currency,
         categoryId: input.categoryId ?? null,
         notes: input.notes ?? null,
         isDuplicate: false,
@@ -160,6 +231,16 @@ export function createExpensesService({ extractor, fileStorage, approverResolver
     // server-side from this same rate, never trusted from the client.
     async getMileageRate(organizationId: string) {
       return { ratePerKm: await expensesRepository.getOrganizationMileageRate(organizationId) };
+    },
+
+    // Any authenticated user can read this (not admin-gated) — same reasoning
+    // as getMileageRate: it's org policy someone needs to know to fill out a
+    // form, not a setting they can change from here.
+    async getSupportedCurrencies(organizationId: string) {
+      return {
+        defaultCurrency: await expensesRepository.getOrganizationDefaultCurrency(organizationId),
+        supportedCurrencies: SUPPORTED_CURRENCIES
+      };
     },
 
     async list(organizationId: string, filters: ListExpensesQuery, actor: Actor) {
@@ -193,6 +274,15 @@ export function createExpensesService({ extractor, fileStorage, approverResolver
       }
 
       const { items, ...fields } = patch;
+
+      // Deliberate asymmetry with the mileage block below: currency
+      // conversion only ever happens once, automatically, at receipt
+      // extraction time (see uploadAndExtract). Editing currency/totalAmount/
+      // subtotal/taxAmount here afterward is a plain manual field edit like
+      // any other receipt field — it does NOT retrigger a conversion, even if
+      // the user changes currency to something that still differs from the
+      // org default. This keeps the mental model simple (convert once, then
+      // it's just data) and matches how receipts already work today.
 
       // totalAmount is never trusted from the client for mileage — always
       // re-derived from the (possibly just-edited) distance/round-trip fields.

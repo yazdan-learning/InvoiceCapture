@@ -63,6 +63,16 @@ export type Expense = {
   paymentMethod: string | null;
   paymentTerms: string | null;
   notes: string | null;
+  // Snapshot of what was on the invoice before currency conversion — set once
+  // at extraction, never touched by later edits. Non-null only when a
+  // conversion actually happened (extracted currency differed from the org's
+  // default at the time).
+  originalCurrency: string | null;
+  originalSubtotal: string | null;
+  originalTaxAmount: string | null;
+  originalTotalAmount: string | null;
+  exchangeRate: string | null;
+  exchangeRateDate: string | null;
   isDuplicate: boolean;
   duplicateOfId: string | null;
   errorMessage: string | null;
