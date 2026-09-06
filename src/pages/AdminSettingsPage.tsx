@@ -1,13 +1,16 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { getOrganizationSettings, updateOrganizationSettings } from '../api';
+import { useTranslation, SUPPORTED_LANGUAGES, LANGUAGE_LABELS, Language } from '../i18n/LanguageContext';
 
 export function AdminSettingsPage() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [mileageRatePerKm, setMileageRatePerKm] = useState('');
   const [defaultCurrency, setDefaultCurrency] = useState('');
   const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
+  const [defaultLanguage, setDefaultLanguage] = useState<Language>('en');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -16,16 +19,18 @@ export function AdminSettingsPage() {
         setMileageRatePerKm(String(settings.mileageRatePerKm));
         setDefaultCurrency(settings.defaultCurrency);
         setSupportedCurrencies(settings.supportedCurrencies);
+        setDefaultLanguage(settings.defaultLanguage as Language);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load settings'))
+      .catch((err) => setError(err instanceof Error ? err.message : t('adminSettings.loadFailed')))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const rate = Number(mileageRatePerKm);
     if (!Number.isFinite(rate) || rate <= 0) {
-      setError('Enter a mileage rate greater than 0.');
+      setError(t('adminSettings.mileageRateInvalid'));
       return;
     }
 
@@ -33,12 +38,13 @@ export function AdminSettingsPage() {
     setError(null);
     setSuccessMessage(null);
     try {
-      const updated = await updateOrganizationSettings({ mileageRatePerKm: rate, defaultCurrency });
+      const updated = await updateOrganizationSettings({ mileageRatePerKm: rate, defaultCurrency, defaultLanguage });
       setMileageRatePerKm(String(updated.mileageRatePerKm));
       setDefaultCurrency(updated.defaultCurrency);
-      setSuccessMessage('Settings saved.');
+      setDefaultLanguage(updated.defaultLanguage as Language);
+      setSuccessMessage(t('adminSettings.saved'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save settings');
+      setError(err instanceof Error ? err.message : t('adminSettings.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -47,7 +53,7 @@ export function AdminSettingsPage() {
   return (
     <div className="list-page">
       <div className="page-heading">
-        <h2>Settings</h2>
+        <h2>{t('adminSettings.title')}</h2>
       </div>
 
       {error && (
@@ -62,15 +68,15 @@ export function AdminSettingsPage() {
       )}
 
       {loading ? (
-        <div className="list-loading">Loading settings…</div>
+        <div className="list-loading">{t('adminSettings.loading')}</div>
       ) : (
         <div className="review-form">
           <form className="settings-form" onSubmit={handleSubmit}>
             <div className="form-section">
-              <h3>Currency</h3>
+              <h3>{t('adminSettings.currencySection')}</h3>
               <div className="form-grid">
                 <label className="form-field">
-                  <span>Default currency</span>
+                  <span>{t('adminSettings.defaultCurrency')}</span>
                   <select value={defaultCurrency} onChange={(e) => setDefaultCurrency(e.target.value)}>
                     {supportedCurrencies.map((code) => (
                       <option key={code} value={code}>
@@ -80,18 +86,31 @@ export function AdminSettingsPage() {
                   </select>
                 </label>
               </div>
-              <p className="field-hint">
-                Extracted receipts in a different currency are automatically converted into this one — the
-                original captured amount stays visible and can be restored on the expense. Mileage
-                reimbursement is always in this currency.
-              </p>
+              <p className="field-hint">{t('adminSettings.currencyHint')}</p>
             </div>
 
             <div className="form-section">
-              <h3>Mileage</h3>
+              <h3>{t('adminSettings.languageSection')}</h3>
               <div className="form-grid">
                 <label className="form-field">
-                  <span>Reimbursement rate (per km)</span>
+                  <span>{t('adminSettings.defaultLanguage')}</span>
+                  <select value={defaultLanguage} onChange={(e) => setDefaultLanguage(e.target.value as Language)}>
+                    {SUPPORTED_LANGUAGES.map((code) => (
+                      <option key={code} value={code}>
+                        {LANGUAGE_LABELS[code]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <p className="field-hint">{t('adminSettings.languageHint')}</p>
+            </div>
+
+            <div className="form-section">
+              <h3>{t('adminSettings.mileageSection')}</h3>
+              <div className="form-grid">
+                <label className="form-field">
+                  <span>{t('adminSettings.mileageRate')}</span>
                   <input
                     type="number"
                     step="0.01"
@@ -102,16 +121,12 @@ export function AdminSettingsPage() {
                   />
                 </label>
               </div>
-              <p className="field-hint">
-                Applied to every mileage expense across the organization — distance × (round trip ? 2 : 1) × this
-                rate. Existing submitted expenses keep the total they were saved with; this only affects new and
-                edited ones.
-              </p>
+              <p className="field-hint">{t('adminSettings.mileageHint')}</p>
             </div>
 
             <div className="action-bar">
               <button className="button-primary" type="submit" disabled={saving}>
-                {saving ? 'Saving…' : 'Save settings'}
+                {saving ? t('common.saving') : t('adminSettings.saveSettings')}
               </button>
             </div>
           </form>

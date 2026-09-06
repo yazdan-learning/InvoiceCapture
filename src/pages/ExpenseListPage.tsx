@@ -3,14 +3,15 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { downloadExpensesExport, listExpenses } from '../api';
 import { Expense, ExpenseStatus } from '../types';
 import { StatusPill } from '../components/StatusPill';
+import { useTranslation } from '../i18n/LanguageContext';
 
-const STATUS_TABS: { label: string; value: ExpenseStatus | 'ALL' }[] = [
-  { label: 'All', value: 'ALL' },
-  { label: 'To review', value: 'EXTRACTED' },
-  { label: 'Pending approval', value: 'SUBMITTED' },
-  { label: 'Approved', value: 'APPROVED' },
-  { label: 'Rejected', value: 'REJECTED' },
-  { label: 'Failed', value: 'FAILED' }
+const STATUS_TABS: { key: string; value: ExpenseStatus | 'ALL' }[] = [
+  { key: 'status.all', value: 'ALL' },
+  { key: 'status.toReview', value: 'EXTRACTED' },
+  { key: 'status.pendingApproval', value: 'SUBMITTED' },
+  { key: 'status.approved', value: 'APPROVED' },
+  { key: 'status.rejected', value: 'REJECTED' },
+  { key: 'status.failed', value: 'FAILED' }
 ];
 
 const VALID_STATUSES = new Set(STATUS_TABS.map((t) => t.value));
@@ -30,13 +31,13 @@ function formatDate(date: string | null) {
   return new Date(date).toLocaleDateString();
 }
 
-function expenseLabel(expense: Expense): string {
+function expenseLabel(expense: Expense, t: (key: string) => string): string {
   if (expense.expenseType === 'MILEAGE') {
     return expense.mileageFrom && expense.mileageTo
       ? `${expense.mileageFrom} → ${expense.mileageTo}`
-      : 'Mileage';
+      : t('common.mileageFallbackLabel');
   }
-  return expense.vendorName || 'Unknown vendor';
+  return expense.vendorName || t('common.unknownVendor');
 }
 
 function expenseDate(expense: Expense): string | null {
@@ -45,6 +46,7 @@ function expenseDate(expense: Expense): string | null {
 
 export function ExpenseListPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialStatus = searchParams.get('status');
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -71,7 +73,7 @@ export function ExpenseListPage() {
       setExpenses(result.expenses);
       setTotal(result.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load expenses');
+      setError(err instanceof Error ? err.message : t('expenseList.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -103,7 +105,7 @@ export function ExpenseListPage() {
         <input
           type="search"
           className="search-input"
-          placeholder="Search vendor or invoice number…"
+          placeholder={t('expenseList.searchPlaceholder')}
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
         />
@@ -115,7 +117,7 @@ export function ExpenseListPage() {
               className={`status-tab ${statusFilter === tab.value ? 'status-tab--active' : ''}`}
               onClick={() => selectStatus(tab.value)}
             >
-              {tab.label}
+              {t(tab.key)}
             </button>
           ))}
         </div>
@@ -125,14 +127,14 @@ export function ExpenseListPage() {
             type="button"
             onClick={() =>
               downloadExpensesExport(statusFilter === 'ALL' ? undefined : statusFilter).catch((err) =>
-                setError(err instanceof Error ? err.message : 'Export failed')
+                setError(err instanceof Error ? err.message : t('expenseList.exportFailed'))
               )
             }
           >
-            Export CSV
+            {t('expenseList.exportCsv')}
           </button>
           <Link className="button-primary" to="/upload">
-            + Add Expense
+            {t('expenseList.addExpense')}
           </Link>
         </div>
       </div>
@@ -144,13 +146,13 @@ export function ExpenseListPage() {
       )}
 
       {loading ? (
-        <div className="list-loading">Loading expenses…</div>
+        <div className="list-loading">{t('expenseList.loading')}</div>
       ) : expenses.length === 0 ? (
         <div className="empty-state">
-          <h3>No expenses yet</h3>
-          <p>Upload a receipt or log mileage to get started.</p>
+          <h3>{t('expenseList.empty')}</h3>
+          <p>{t('expenseList.emptyHint')}</p>
           <Link className="button-primary" to="/upload">
-            + Add Expense
+            {t('expenseList.addExpense')}
           </Link>
         </div>
       ) : (
@@ -167,12 +169,12 @@ export function ExpenseListPage() {
               </colgroup>
               <thead>
                 <tr>
-                  <th>Vendor</th>
-                  <th>Invoice #</th>
-                  <th>Date</th>
-                  <th>Category</th>
-                  <th className="align-right">Amount</th>
-                  <th>Status</th>
+                  <th>{t('table.vendor')}</th>
+                  <th>{t('table.invoiceNumber')}</th>
+                  <th>{t('table.date')}</th>
+                  <th>{t('table.category')}</th>
+                  <th className="align-right">{t('table.amount')}</th>
+                  <th>{t('table.status')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -180,12 +182,12 @@ export function ExpenseListPage() {
                   <tr key={expense.id} onClick={() => navigate(`/expenses/${expense.id}`)}>
                     <td>
                       <span className="vendor-cell">
-                        <span className="vendor-name" title={expenseLabel(expense)}>
-                          {expenseLabel(expense)}
+                        <span className="vendor-name" title={expenseLabel(expense, t)}>
+                          {expenseLabel(expense, t)}
                         </span>
                         {expense.isDuplicate && (
-                          <span className="dup-flag" title="Possible duplicate of an existing invoice">
-                            ⚠ duplicate
+                          <span className="dup-flag" title={t('expenseList.duplicateTooltip')}>
+                            {t('expenseList.duplicateBadge')}
                           </span>
                         )}
                       </span>
@@ -207,14 +209,14 @@ export function ExpenseListPage() {
             {expenses.map((expense) => (
               <div key={expense.id} className="invoice-card" onClick={() => navigate(`/expenses/${expense.id}`)}>
                 <div className="invoice-card-top">
-                  <span className="invoice-card-vendor">{expenseLabel(expense)}</span>
+                  <span className="invoice-card-vendor">{expenseLabel(expense, t)}</span>
                   <StatusPill status={expense.status} />
                 </div>
                 <div className="invoice-card-amount">{formatAmount(expense.totalAmount, expense.currency)}</div>
                 <div className="invoice-card-meta">
                   <span>{formatDate(expenseDate(expense))}</span>
                   {expense.category && <span>{expense.category.name}</span>}
-                  {expense.isDuplicate && <span className="dup-flag">⚠ duplicate</span>}
+                  {expense.isDuplicate && <span className="dup-flag">{t('expenseList.duplicateBadge')}</span>}
                 </div>
               </div>
             ))}
@@ -228,18 +230,16 @@ export function ExpenseListPage() {
                 disabled={page <= 1}
                 onClick={() => setPage((p) => p - 1)}
               >
-                Previous
+                {t('expenseList.previous')}
               </button>
-              <span className="pagination-label">
-                Page {page} of {totalPages}
-              </span>
+              <span className="pagination-label">{t('expenseList.pageOf', { page, totalPages })}</span>
               <button
                 type="button"
                 className="button-outline"
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
               >
-                Next
+                {t('expenseList.next')}
               </button>
             </div>
           )}

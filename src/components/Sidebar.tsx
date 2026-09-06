@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { AuthUser } from '../types';
+import { useTranslation } from '../i18n/LanguageContext';
 import { IconAdmin, IconApprovals, IconDashboard, IconExpenses, IconLogout, IconSettings } from './icons';
 
 type SidebarProps = {
@@ -9,6 +10,7 @@ type SidebarProps = {
 };
 
 export function Sidebar({ user, currentPath, onLogout }: SidebarProps) {
+  const { t } = useTranslation();
   const isExpensesActive =
     currentPath === '/expenses' || currentPath.startsWith('/expenses/') || currentPath.startsWith('/upload');
 
@@ -25,44 +27,44 @@ export function Sidebar({ user, currentPath, onLogout }: SidebarProps) {
           />
         </svg>
         <div>
-          <div className="sidebar-brand-title">Expense Manager</div>
-          <div className="sidebar-brand-sub">Receipts &amp; Approvals</div>
+          <div className="sidebar-brand-title">{t('nav.brand')}</div>
+          <div className="sidebar-brand-sub">{t('nav.brandSub')}</div>
         </div>
       </div>
 
       <nav className="sidebar-nav">
         <Link to="/" className={`sidebar-link ${currentPath === '/' ? 'sidebar-link--active' : ''}`}>
           <IconDashboard className="sidebar-link-icon" />
-          Dashboard
+          {t('nav.dashboard')}
         </Link>
         <Link to="/expenses" className={`sidebar-link ${isExpensesActive ? 'sidebar-link--active' : ''}`}>
           <IconExpenses className="sidebar-link-icon" />
-          Expenses
+          {t('nav.expenses')}
         </Link>
         {user.role !== 'EMPLOYEE' && (
           <Link to="/approvals" className={`sidebar-link ${currentPath === '/approvals' ? 'sidebar-link--active' : ''}`}>
             <IconApprovals className="sidebar-link-icon" />
-            Approvals
+            {t('nav.approvals')}
           </Link>
         )}
       </nav>
 
       {user.role === 'ADMIN' && (
         <div className="sidebar-section">
-          <span className="sidebar-section-label">Admin</span>
+          <span className="sidebar-section-label">{t('nav.admin')}</span>
           <Link
             to="/admin/users"
             className={`sidebar-link ${currentPath === '/admin/users' ? 'sidebar-link--active' : ''}`}
           >
             <IconAdmin className="sidebar-link-icon" />
-            Users
+            {t('nav.users')}
           </Link>
           <Link
             to="/admin/settings"
             className={`sidebar-link ${currentPath === '/admin/settings' ? 'sidebar-link--active' : ''}`}
           >
             <IconSettings className="sidebar-link-icon" />
-            Settings
+            {t('nav.settings')}
           </Link>
         </div>
       )}
@@ -74,7 +76,7 @@ export function Sidebar({ user, currentPath, onLogout }: SidebarProps) {
         </div>
         <button className="sidebar-logout" type="button" onClick={onLogout}>
           <IconLogout className="sidebar-link-icon" />
-          Log out
+          {t('common.logOut')}
         </button>
       </div>
     </aside>

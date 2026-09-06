@@ -54,9 +54,10 @@ export const expensesRouter = Router();
 
 expensesRouter.post('/', upload.single('file'), asyncHandler(expensesController.upload));
 
-// Must come before "/:id" or "mileage"/"currencies" get parsed as an expense id.
+// Must come before "/:id" or "mileage"/"currencies"/"language" get parsed as an expense id.
 expensesRouter.get('/mileage/rate', asyncHandler(expensesController.getMileageRate));
 expensesRouter.get('/currencies', asyncHandler(expensesController.getSupportedCurrencies));
+expensesRouter.get('/language', asyncHandler(expensesController.getSupportedLanguages));
 
 expensesRouter.post(
   '/mileage/distance',

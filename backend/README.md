@@ -91,6 +91,7 @@ unless `ADMIN`:
 | POST | `/api/expenses/mileage/distance` | preview distance/duration for `from`/`to` without creating an expense |
 | GET | `/api/expenses/mileage/rate` | current org's mileage reimbursement rate (for the FE's live total preview) |
 | GET | `/api/expenses/currencies` | org's default currency + the list of currencies conversion supports |
+| GET | `/api/expenses/language` | org's default UI language + the list of languages the FE supports |
 | GET | `/api/expenses` | list, filters: `status`, `search`, `page`, `pageSize` |
 | GET | `/api/expenses/:id` | single expense detail |
 | GET | `/api/expenses/:id/file` | the original uploaded document (RECEIPT type only) |
@@ -107,8 +108,8 @@ applied once at the router mount in `app.ts`, not per-route):
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/organization/settings` | current org settings (`mileageRatePerKm`, `defaultCurrency`, `supportedCurrencies`) |
-| PATCH | `/api/organization/settings` | update org settings — either field, or both |
+| GET | `/api/organization/settings` | current org settings (`mileageRatePerKm`, `defaultCurrency`, `defaultLanguage`, `supportedCurrencies`, `supportedLanguages`) |
+| PATCH | `/api/organization/settings` | update org settings — any one field, or several at once |
 
 ## Multi-currency
 

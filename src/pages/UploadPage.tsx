@@ -1,9 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { uploadReceipt } from '../api';
+import { useTranslation } from '../i18n/LanguageContext';
 
 export function UploadPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'error'>('idle');
@@ -56,7 +58,7 @@ export function UploadPage() {
 
   const handleSubmit = async () => {
     if (!file) {
-      setError('Please select an invoice first.');
+      setError(t('upload.selectFileFirst'));
       return;
     }
     setStatus('uploading');
@@ -67,10 +69,10 @@ export function UploadPage() {
       if (response.data) {
         navigate(`/expenses/${response.data.id}`, { state: { justUploaded: true } });
       } else {
-        throw new Error(response.message || 'Extraction failed');
+        throw new Error(response.message || t('upload.extractionFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unexpected error');
+      setError(err instanceof Error ? err.message : t('upload.unexpectedError'));
       setStatus('error');
     }
   };
@@ -81,22 +83,22 @@ export function UploadPage() {
         <div className="spinner-container">
           <div className="spinner"></div>
         </div>
-        <h2>Processing Invoice</h2>
-        <p className="processing-text">Extracting data from your document…</p>
+        <h2>{t('upload.processingTitle')}</h2>
+        <p className="processing-text">{t('upload.processingSubtitle')}</p>
         <div className="processing-steps">
           <div className="step active">
             <div className="step-icon">✓</div>
-            <span>File uploaded</span>
+            <span>{t('upload.stepFileUploaded')}</span>
           </div>
           <div className="step active">
             <div className="step-icon">
               <div className="step-spinner"></div>
             </div>
-            <span>OCR scanning</span>
+            <span>{t('upload.stepOcrScanning')}</span>
           </div>
           <div className="step">
             <div className="step-icon">3</div>
-            <span>AI structuring</span>
+            <span>{t('upload.stepAiStructuring')}</span>
           </div>
         </div>
       </div>
@@ -135,8 +137,8 @@ export function UploadPage() {
                 />
               </svg>
             </div>
-            <h3>Drop invoice here or click to browse</h3>
-            <p className="dropzone-hint">Supports JPEG, PNG, PDF • Max 10MB</p>
+            <h3>{t('upload.dropHint')}</h3>
+            <p className="dropzone-hint">{t('upload.fileTypeHint')}</p>
           </div>
         ) : (
           <div className="preview-container">
@@ -159,7 +161,15 @@ export function UploadPage() {
               </div>
             )}
             <div className="preview-overlay">
-              <button className="button-icon" onClick={(e) => { e.stopPropagation(); handleReset(); }} title="Remove" type="button">
+              <button
+                className="button-icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleReset();
+                }}
+                title={t('upload.removeFile')}
+                type="button"
+              >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -181,13 +191,13 @@ export function UploadPage() {
       {file && (
         <div className="action-bar">
           <button className="button-outline" onClick={handleReset} type="button">
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="button-primary" onClick={handleSubmit} type="button">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            Process Invoice
+            {t('upload.processInvoice')}
           </button>
         </div>
       )}

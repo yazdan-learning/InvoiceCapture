@@ -1,16 +1,18 @@
 import { ExpenseStatus } from '../types';
+import { useTranslation } from '../i18n/LanguageContext';
 
-const STATUS_CONFIG: Record<ExpenseStatus, { label: string; className: string }> = {
-  PENDING: { label: 'Pending', className: 'status-pill--pending' },
-  PROCESSING: { label: 'Processing', className: 'status-pill--processing' },
-  EXTRACTED: { label: 'To review', className: 'status-pill--extracted' },
-  FAILED: { label: 'Failed', className: 'status-pill--failed' },
-  SUBMITTED: { label: 'Pending approval', className: 'status-pill--submitted' },
-  APPROVED: { label: 'Approved', className: 'status-pill--approved' },
-  REJECTED: { label: 'Rejected', className: 'status-pill--rejected' }
+const STATUS_CONFIG: Record<ExpenseStatus, { key: string; className: string }> = {
+  PENDING: { key: 'status.pending', className: 'status-pill--pending' },
+  PROCESSING: { key: 'status.processing', className: 'status-pill--processing' },
+  EXTRACTED: { key: 'status.toReview', className: 'status-pill--extracted' },
+  FAILED: { key: 'status.failed', className: 'status-pill--failed' },
+  SUBMITTED: { key: 'status.pendingApproval', className: 'status-pill--submitted' },
+  APPROVED: { key: 'status.approved', className: 'status-pill--approved' },
+  REJECTED: { key: 'status.rejected', className: 'status-pill--rejected' }
 };
 
 export function StatusPill({ status }: { status: ExpenseStatus }) {
+  const { t } = useTranslation();
   const config = STATUS_CONFIG[status];
-  return <span className={`status-pill ${config.className}`}>{config.label}</span>;
+  return <span className={`status-pill ${config.className}`}>{t(config.key)}</span>;
 }

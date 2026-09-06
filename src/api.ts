@@ -203,6 +203,16 @@ export async function getSupportedCurrencies(apiBaseUrl = defaultBaseUrl): Promi
   return parseJsonOrThrow(response);
 }
 
+export type SupportedLanguages = {
+  defaultLanguage: string;
+  supportedLanguages: string[];
+};
+
+export async function getSupportedLanguages(apiBaseUrl = defaultBaseUrl): Promise<SupportedLanguages> {
+  const response = await fetch(apiUrl('/api/expenses/language', apiBaseUrl), { headers: authHeaders() });
+  return parseJsonOrThrow(response);
+}
+
 export async function getCategories(apiBaseUrl = defaultBaseUrl): Promise<Category[]> {
   const response = await fetch(apiUrl('/api/categories', apiBaseUrl), { headers: authHeaders() });
   return parseJsonOrThrow(response);
@@ -298,17 +308,21 @@ export async function createUser(payload: CreateUserPayload, apiBaseUrl = defaul
 export type OrganizationSettings = {
   mileageRatePerKm: number;
   defaultCurrency: string;
+  defaultLanguage: string;
   supportedCurrencies: string[];
+  supportedLanguages: string[];
 };
 
 export type UpdateOrganizationSettingsPayload = Partial<{
   mileageRatePerKm: number;
   defaultCurrency: string;
+  defaultLanguage: string;
 }>;
 
 export type UpdatedOrganizationSettings = {
   mileageRatePerKm: number;
   defaultCurrency: string;
+  defaultLanguage: string;
 };
 
 export async function getOrganizationSettings(apiBaseUrl = defaultBaseUrl): Promise<OrganizationSettings> {

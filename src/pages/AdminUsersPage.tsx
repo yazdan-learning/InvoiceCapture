@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { createUser, getUsers } from '../api';
 import { Role, UserSummary } from '../types';
+import { useTranslation } from '../i18n/LanguageContext';
 
 type FormState = {
   name: string;
@@ -13,6 +14,7 @@ type FormState = {
 const EMPTY_FORM: FormState = { name: '', email: '', password: '', role: 'EMPLOYEE', managerId: '' };
 
 export function AdminUsersPage() {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,10 +26,11 @@ export function AdminUsersPage() {
     setLoading(true);
     getUsers()
       .then(setUsers)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load users'))
+      .catch((err) => setError(err instanceof Error ? err.message : t('adminUsers.loadFailed')))
       .finally(() => setLoading(false));
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, []);
 
   const usersById = new Map(users.map((u) => [u.id, u]));
@@ -48,11 +51,11 @@ export function AdminUsersPage() {
         role: form.role,
         managerId: form.managerId || null
       });
-      setSuccessMessage(`${form.name} was added.`);
+      setSuccessMessage(t('adminUsers.userAdded', { name: form.name }));
       setForm(EMPTY_FORM);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create user');
+      setError(err instanceof Error ? err.message : t('adminUsers.createFailed'));
     } finally {
       setCreating(false);
     }
@@ -61,7 +64,7 @@ export function AdminUsersPage() {
   return (
     <div className="list-page">
       <div className="page-heading">
-        <h2>Users</h2>
+        <h2>{t('adminUsers.title')}</h2>
       </div>
 
       {error && (
@@ -76,15 +79,15 @@ export function AdminUsersPage() {
       )}
 
       <div className="review-form">
-        <h3 style={{ marginBottom: 12 }}>Add a user</h3>
+        <h3 style={{ marginBottom: 12 }}>{t('adminUsers.addUser')}</h3>
         <form onSubmit={handleSubmit}>
           <div className="form-grid">
             <label className="form-field">
-              <span>Name</span>
+              <span>{t('adminUsers.name')}</span>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
             </label>
             <label className="form-field">
-              <span>Email</span>
+              <span>{t('adminUsers.email')}</span>
               <input
                 type="email"
                 value={form.email}
@@ -93,7 +96,7 @@ export function AdminUsersPage() {
               />
             </label>
             <label className="form-field">
-              <span>Password</span>
+              <span>{t('adminUsers.password')}</span>
               <input
                 type="password"
                 value={form.password}
@@ -103,17 +106,17 @@ export function AdminUsersPage() {
               />
             </label>
             <label className="form-field">
-              <span>Role</span>
+              <span>{t('adminUsers.role')}</span>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>
-                <option value="EMPLOYEE">Employee</option>
-                <option value="APPROVER">Approver</option>
-                <option value="ADMIN">Admin</option>
+                <option value="EMPLOYEE">{t('adminUsers.roleEmployee')}</option>
+                <option value="APPROVER">{t('adminUsers.roleApprover')}</option>
+                <option value="ADMIN">{t('adminUsers.roleAdmin')}</option>
               </select>
             </label>
             <label className="form-field">
-              <span>Manager (approver)</span>
+              <span>{t('adminUsers.manager')}</span>
               <select value={form.managerId} onChange={(e) => setForm({ ...form, managerId: e.target.value })}>
-                <option value="">No manager (self-certifies on submit)</option>
+                <option value="">{t('adminUsers.noManager')}</option>
                 {possibleManagers.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name} ({m.role})
@@ -124,23 +127,23 @@ export function AdminUsersPage() {
           </div>
           <div className="action-bar">
             <button className="button-primary" type="submit" disabled={creating}>
-              {creating ? 'Adding…' : 'Add user'}
+              {creating ? t('adminUsers.adding') : t('adminUsers.addUserButton')}
             </button>
           </div>
         </form>
       </div>
 
       {loading ? (
-        <div className="list-loading">Loading users…</div>
+        <div className="list-loading">{t('adminUsers.loading')}</div>
       ) : (
         <div className="invoice-table-wrap">
           <table className="invoice-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Reports to</th>
+                <th>{t('adminUsers.name')}</th>
+                <th>{t('adminUsers.email')}</th>
+                <th>{t('adminUsers.role')}</th>
+                <th>{t('adminUsers.reportsTo')}</th>
               </tr>
             </thead>
             <tbody>

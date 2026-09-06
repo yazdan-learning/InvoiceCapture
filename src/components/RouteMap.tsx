@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { isGoogleMapsConfigured, loadGoogleMaps } from '../lib/googleMaps';
+import { useTranslation } from '../i18n/LanguageContext';
 
 type Props = {
   origin: string;
@@ -15,14 +16,17 @@ const DEFAULT_ZOOM = 5;
 // successful distance calculation) — the parent is responsible for not
 // passing raw keystrokes in here, so this never re-geocodes on every letter typed.
 export function RouteMap({ origin, destination }: Props) {
+  const { t } = useTranslation();
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const rendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const lastResultRef = useRef<google.maps.DirectionsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isGoogleMapsConfigured() || !mapDivRef.current) return;
     let cancelled = false;
+    let resizeObserver: ResizeObserver | null = null;
 
     loadGoogleMaps()
       .then((g) => {
@@ -34,11 +38,30 @@ export function RouteMap({ origin, destination }: Props) {
           zoomControl: true
         });
         rendererRef.current = new g.maps.DirectionsRenderer({ map: mapRef.current });
+
+        // The map only reads its container's size once, at construction. If
+        // this component later sits in a layout whose column width changes
+        // without origin/destination changing (e.g. resizing the browser
+        // across the sidebar/mobile-nav breakpoint), Google Maps needs an
+        // explicit nudge or it keeps rendering for the stale size.
+        resizeObserver = new ResizeObserver(() => {
+          if (!mapRef.current) return;
+          g.maps.event.trigger(mapRef.current, 'resize');
+          if (lastResultRef.current) {
+            const bounds = lastResultRef.current.routes[0]?.bounds;
+            if (bounds) mapRef.current.fitBounds(bounds);
+          } else {
+            mapRef.current.setCenter(DEFAULT_CENTER);
+            mapRef.current.setZoom(DEFAULT_ZOOM);
+          }
+        });
+        resizeObserver.observe(mapDivRef.current);
       })
-      .catch(() => setError('Could not load the map.'));
+      .catch(() => setError(t('routeMap.loadFailed')));
 
     return () => {
       cancelled = true;
+      resizeObserver?.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -55,9 +78,10 @@ export function RouteMap({ origin, destination }: Props) {
           if (cancelled || !rendererRef.current) return;
           if (status === 'OK' && result) {
             rendererRef.current.setDirections(result);
+            lastResultRef.current = result;
             setError(null);
           } else {
-            setError('Could not show this route on the map.');
+            setError(t('routeMap.routeFailed'));
           }
         }
       );
@@ -66,6 +90,7 @@ export function RouteMap({ origin, destination }: Props) {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [origin, destination]);
 
   if (!isGoogleMapsConfigured()) return null;

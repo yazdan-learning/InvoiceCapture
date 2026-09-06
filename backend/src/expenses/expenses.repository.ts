@@ -189,5 +189,13 @@ export const expensesRepository = {
       select: { defaultCurrency: true }
     });
     return org.defaultCurrency;
+  },
+
+  async getOrganizationDefaultLanguage(organizationId: string): Promise<string> {
+    const org = await prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { defaultLanguage: true }
+    });
+    return org.defaultLanguage;
   }
 };

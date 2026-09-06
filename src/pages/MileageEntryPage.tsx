@@ -5,6 +5,8 @@ import { Category } from '../types';
 import { LocationAutocompleteInput } from '../components/LocationAutocompleteInput';
 import { RouteMap } from '../components/RouteMap';
 import { isGoogleMapsConfigured } from '../lib/googleMaps';
+import { useTranslation } from '../i18n/LanguageContext';
+import { useIsDesktop } from '../hooks/useIsDesktop';
 
 function todayInputValue(): string {
   return new Date().toISOString().slice(0, 10);
@@ -12,6 +14,8 @@ function todayInputValue(): string {
 
 export function MileageEntryPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const isDesktop = useIsDesktop();
   const [categories, setCategories] = useState<Category[]>([]);
   const [date, setDate] = useState(todayInputValue());
   const [from, setFrom] = useState('');
@@ -56,7 +60,7 @@ export function MileageEntryPage() {
       const result = await previewMileageDistance(fromValue.trim(), toValue.trim());
       setDistanceKm(result.distanceKm.toFixed(1));
     } catch (err) {
-      setDistanceError(err instanceof Error ? err.message : 'Could not calculate distance');
+      setDistanceError(err instanceof Error ? err.message : t('common.couldNotCalculateDistance'));
     } finally {
       setCalculating(false);
     }
@@ -90,7 +94,7 @@ export function MileageEntryPage() {
       const expense = await createMileageExpense(buildCreatePayload());
       navigate(`/expenses/${expense.id}`);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to save mileage expense');
+      setSubmitError(err instanceof Error ? err.message : t('mileage.saveFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -112,119 +116,130 @@ export function MileageEntryPage() {
         navigate(`/expenses/${expense.id}`);
       }
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to submit mileage expense');
+      setSubmitError(err instanceof Error ? err.message : t('mileage.submitFailed'));
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="review-form review-form--standalone">
-      <div className="form-section">
-        <h3>Trip</h3>
-        <div className="form-grid">
-          <label className="form-field">
-            <span>Date</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </label>
-          <label className="form-field">
-            <span>From</span>
-            <LocationAutocompleteInput
-              defaultValue={from}
-              onChange={setFrom}
-              onPlaceSelected={(address) => runCalculate(address, to)}
-              placeholder={isGoogleMapsConfigured() ? 'Start typing an address…' : 'Berlin HQ'}
-            />
-          </label>
-          <label className="form-field">
-            <span>To</span>
-            <LocationAutocompleteInput
-              defaultValue={to}
-              onChange={setTo}
-              onPlaceSelected={(address) => runCalculate(from, address)}
-              placeholder={isGoogleMapsConfigured() ? 'Start typing an address…' : 'Munich Client Office'}
-            />
-          </label>
-          <label className="form-field">
-            <span>Distance (km){calculating ? ' — calculating…' : ''}</span>
-            <input
-              type="number"
-              step="0.1"
-              value={distanceKm}
-              onChange={(e) => setDistanceKm(e.target.value)}
-              placeholder="Fills in automatically, or type it yourself"
-            />
-          </label>
-          <label className="form-field form-field--checkbox">
-            <input type="checkbox" checked={roundTrip} onChange={(e) => setRoundTrip(e.target.checked)} />
-            <span>Round trip</span>
-          </label>
-        </div>
-        {distanceError && (
-          <div className="alert alert-error alert-inline">
-            <span>{distanceError}</span>
-            {from.trim() && to.trim() && (
-              <button className="alert-action" type="button" onClick={retryCalculate}>
-                Retry
-              </button>
-            )}
-          </div>
-        )}
-        <RouteMap origin={routeQuery?.from ?? ''} destination={routeQuery?.to ?? ''} />
-      </div>
-
-      <div className="form-section">
-        <h3>Details</h3>
-        <div className="form-grid">
-          <label className="form-field">
-            <span>Category</span>
-            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">Uncategorized</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
-
-      <div className="form-section">
-        <label className="form-field form-field--wide">
-          <span>Notes</span>
-          <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </label>
-      </div>
-
-      {submitError && (
-        <div className="alert alert-error">
-          <span>{submitError}</span>
+    <div className="detail-layout">
+      {isDesktop && (
+        <div className="detail-layout-aside">
+          <RouteMap origin={routeQuery?.from ?? ''} destination={routeQuery?.to ?? ''} />
         </div>
       )}
 
-      <div className="action-bar action-bar--with-total">
-        {estimatedAmount != null && (
-          <span className="estimated-total">
-            <span className="estimated-total-label">Amount</span>
-            <span className="estimated-total-value">
-              {estimatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-          </span>
+      <div className="review-form">
+        <div className="form-section">
+          <h3>{t('common.trip')}</h3>
+          <div className="form-grid">
+            <label className="form-field">
+              <span>{t('common.date')}</span>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
+            <label className="form-field">
+              <span>{t('common.from')}</span>
+              <LocationAutocompleteInput
+                defaultValue={from}
+                onChange={setFrom}
+                onPlaceSelected={(address) => runCalculate(address, to)}
+                placeholder={isGoogleMapsConfigured() ? t('common.startTypingAddress') : t('mileage.fromPlaceholderNoMaps')}
+              />
+            </label>
+            <label className="form-field">
+              <span>{t('common.to')}</span>
+              <LocationAutocompleteInput
+                defaultValue={to}
+                onChange={setTo}
+                onPlaceSelected={(address) => runCalculate(from, address)}
+                placeholder={isGoogleMapsConfigured() ? t('common.startTypingAddress') : t('mileage.toPlaceholderNoMaps')}
+              />
+            </label>
+            <label className="form-field">
+              <span>
+                {t('common.distanceKm')}
+                {calculating ? t('common.calculatingSuffix') : ''}
+              </span>
+              <input
+                type="number"
+                step="0.1"
+                value={distanceKm}
+                onChange={(e) => setDistanceKm(e.target.value)}
+                placeholder={t('mileage.distancePlaceholder')}
+              />
+            </label>
+            <label className="form-field form-field--checkbox">
+              <input type="checkbox" checked={roundTrip} onChange={(e) => setRoundTrip(e.target.checked)} />
+              <span>{t('common.roundTrip')}</span>
+            </label>
+          </div>
+          {distanceError && (
+            <div className="alert alert-error alert-inline">
+              <span>{distanceError}</span>
+              {from.trim() && to.trim() && (
+                <button className="alert-action" type="button" onClick={retryCalculate}>
+                  {t('common.retry')}
+                </button>
+              )}
+            </div>
+          )}
+          {!isDesktop && <RouteMap origin={routeQuery?.from ?? ''} destination={routeQuery?.to ?? ''} />}
+        </div>
+
+        <div className="form-section">
+          <h3>{t('common.details')}</h3>
+          <div className="form-grid">
+            <label className="form-field">
+              <span>{t('common.category')}</span>
+              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+                <option value="">{t('common.uncategorized')}</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="form-section">
+          <label className="form-field form-field--wide">
+            <span>{t('common.notes')}</span>
+            <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </label>
+        </div>
+
+        {submitError && (
+          <div className="alert alert-error">
+            <span>{submitError}</span>
+          </div>
         )}
-        <span className="action-bar-buttons">
-          <button className="button-outline" type="button" disabled={submitting} onClick={handleSaveDraft}>
-            {submitting ? 'Saving…' : 'Save draft'}
-          </button>
-          <button
-            className="button-primary"
-            type="button"
-            disabled={!canSubmitForApproval || submitting}
-            onClick={handleSubmitForApproval}
-          >
-            {submitting ? 'Submitting…' : 'Submit for approval'}
-          </button>
-        </span>
+
+        <div className="action-bar action-bar--with-total">
+          {estimatedAmount != null && (
+            <span className="estimated-total">
+              <span className="estimated-total-label">{t('common.amount')}</span>
+              <span className="estimated-total-value">
+                {estimatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </span>
+          )}
+          <span className="action-bar-buttons">
+            <button className="button-outline" type="button" disabled={submitting} onClick={handleSaveDraft}>
+              {submitting ? t('common.saving') : t('common.saveDraft')}
+            </button>
+            <button
+              className="button-primary"
+              type="button"
+              disabled={!canSubmitForApproval || submitting}
+              onClick={handleSubmitForApproval}
+            >
+              {submitting ? t('common.submitting') : t('common.submitForApproval')}
+            </button>
+          </span>
+        </div>
       </div>
     </div>
   );

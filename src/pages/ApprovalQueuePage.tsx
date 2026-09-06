@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getApprovalQueue } from '../api';
 import { Expense } from '../types';
 import { StatusPill } from '../components/StatusPill';
+import { useTranslation } from '../i18n/LanguageContext';
 
 function formatAmount(amount: string | null, currency: string | null) {
   if (!amount) return '—';
@@ -13,13 +14,13 @@ function formatAmount(amount: string | null, currency: string | null) {
   return currency ? `${formatted} ${currency}` : formatted;
 }
 
-function expenseLabel(expense: Expense): string {
+function expenseLabel(expense: Expense, t: (key: string) => string): string {
   if (expense.expenseType === 'MILEAGE') {
     return expense.mileageFrom && expense.mileageTo
       ? `${expense.mileageFrom} → ${expense.mileageTo}`
-      : 'Mileage';
+      : t('common.mileageFallbackLabel');
   }
-  return expense.vendorName || 'Unknown vendor';
+  return expense.vendorName || t('common.unknownVendor');
 }
 
 function expenseDate(expense: Expense): string | null {
@@ -28,6 +29,7 @@ function expenseDate(expense: Expense): string | null {
 
 export function ApprovalQueuePage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,14 +37,15 @@ export function ApprovalQueuePage() {
   useEffect(() => {
     getApprovalQueue()
       .then((result) => setExpenses(result.expenses))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load approvals'))
+      .catch((err) => setError(err instanceof Error ? err.message : t('approvalQueue.loadFailed')))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div className="list-page">
       <div className="page-heading">
-        <h2>Pending your approval</h2>
+        <h2>{t('approvalQueue.title')}</h2>
       </div>
 
       {error && (
@@ -52,11 +55,11 @@ export function ApprovalQueuePage() {
       )}
 
       {loading ? (
-        <div className="list-loading">Loading…</div>
+        <div className="list-loading">{t('common.loading')}</div>
       ) : expenses.length === 0 ? (
         <div className="empty-state">
-          <h3>Nothing waiting on you</h3>
-          <p>Expenses submitted by your team will show up here.</p>
+          <h3>{t('approvalQueue.empty')}</h3>
+          <p>{t('approvalQueue.emptyHint')}</p>
         </div>
       ) : (
         <>
@@ -72,12 +75,12 @@ export function ApprovalQueuePage() {
               </colgroup>
               <thead>
                 <tr>
-                  <th>Submitted by</th>
-                  <th>Vendor</th>
-                  <th>Invoice #</th>
-                  <th>Date</th>
-                  <th className="align-right">Amount</th>
-                  <th>Status</th>
+                  <th>{t('table.submittedBy')}</th>
+                  <th>{t('table.vendor')}</th>
+                  <th>{t('table.invoiceNumber')}</th>
+                  <th>{t('table.date')}</th>
+                  <th className="align-right">{t('table.amount')}</th>
+                  <th>{t('table.status')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -85,8 +88,8 @@ export function ApprovalQueuePage() {
                   <tr key={expense.id} onClick={() => navigate(`/expenses/${expense.id}`)}>
                     <td>{expense.uploader.name}</td>
                     <td>
-                      <span className="vendor-name" title={expenseLabel(expense)}>
-                        {expenseLabel(expense)}
+                      <span className="vendor-name" title={expenseLabel(expense, t)}>
+                        {expenseLabel(expense, t)}
                       </span>
                     </td>
                     <td>{expense.expenseType === 'MILEAGE' ? '—' : expense.invoiceNumber || '—'}</td>
@@ -105,12 +108,12 @@ export function ApprovalQueuePage() {
             {expenses.map((expense) => (
               <div key={expense.id} className="invoice-card" onClick={() => navigate(`/expenses/${expense.id}`)}>
                 <div className="invoice-card-top">
-                  <span className="invoice-card-vendor">{expenseLabel(expense)}</span>
+                  <span className="invoice-card-vendor">{expenseLabel(expense, t)}</span>
                   <StatusPill status={expense.status} />
                 </div>
                 <div className="invoice-card-amount">{formatAmount(expense.totalAmount, expense.currency)}</div>
                 <div className="invoice-card-meta">
-                  <span>submitted by {expense.uploader.name}</span>
+                  <span>{t('dashboard.submittedBy', { name: expense.uploader.name })}</span>
                   <span>{expenseDate(expense) ? new Date(expenseDate(expense)!).toLocaleDateString() : '—'}</span>
                 </div>
               </div>

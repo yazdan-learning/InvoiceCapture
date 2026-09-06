@@ -34,6 +34,11 @@ export function createExpensesController(expensesService: ExpensesService) {
       res.json(result);
     },
 
+    async getSupportedLanguages(req: Request, res: Response) {
+      const result = await expensesService.getSupportedLanguages(req.actor.organizationId);
+      res.json(result);
+    },
+
     async previewMileageDistance(req: Request, res: Response) {
       const { from, to } = req.body as { from: string; to: string };
       const result = await expensesService.getDistancePreview(from, to);

@@ -1,55 +1,18 @@
-import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { AuthUser } from '../types';
-import { IconAdmin, IconApprovals, IconDashboard, IconExpenses, IconLogout, IconSettings, IconUpload } from './icons';
+import { useTranslation } from '../i18n/LanguageContext';
+import { LanguageSwitcher } from './LanguageSwitcher';
+import { UserMenu } from './UserMenu';
+import { IconApprovals, IconDashboard, IconExpenses, IconUpload } from './icons';
 
 export function MobileTopBar({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
-  const [open, setOpen] = useState(false);
-
+  const { t } = useTranslation();
   return (
     <div className="mobile-topbar">
-      <span className="mobile-topbar-title">Expense Manager</span>
-      <div className="mobile-user-menu">
-        <button
-          className="mobile-user-avatar"
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-label="Account menu"
-        >
-          {user.name.charAt(0).toUpperCase()}
-        </button>
-        {open && (
-          <>
-            <div className="mobile-user-dropdown-backdrop" onClick={() => setOpen(false)} />
-            <div className="mobile-user-dropdown">
-              <div className="mobile-user-dropdown-name">{user.name}</div>
-              <span className="header-user-role">{user.role}</span>
-              {user.role === 'ADMIN' && (
-                <>
-                  <Link to="/admin/users" className="mobile-user-dropdown-link" onClick={() => setOpen(false)}>
-                    <IconAdmin className="sidebar-link-icon" />
-                    Users
-                  </Link>
-                  <Link to="/admin/settings" className="mobile-user-dropdown-link" onClick={() => setOpen(false)}>
-                    <IconSettings className="sidebar-link-icon" />
-                    Settings
-                  </Link>
-                </>
-              )}
-              <button
-                className="mobile-user-dropdown-link"
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  onLogout();
-                }}
-              >
-                <IconLogout className="sidebar-link-icon" />
-                Log out
-              </button>
-            </div>
-          </>
-        )}
+      <span className="mobile-topbar-title">{t('nav.brand')}</span>
+      <div className="mobile-topbar-right">
+        <LanguageSwitcher />
+        <UserMenu user={user} onLogout={onLogout} />
       </div>
     </div>
   );
@@ -57,6 +20,7 @@ export function MobileTopBar({ user, onLogout }: { user: AuthUser; onLogout: () 
 
 export function MobileBottomNav({ user }: { user: AuthUser }) {
   const location = useLocation();
+  const { t } = useTranslation();
   const isExpensesActive =
     location.pathname === '/expenses' || location.pathname.startsWith('/expenses/');
 
@@ -69,15 +33,15 @@ export function MobileBottomNav({ user }: { user: AuthUser }) {
     <nav className="mobile-bottom-nav">
       <Link to="/" className={`mobile-tab ${location.pathname === '/' ? 'mobile-tab--active' : ''}`}>
         <IconDashboard className="mobile-tab-icon" />
-        <span>Home</span>
+        <span>{t('nav.home')}</span>
       </Link>
       <Link to="/upload" className="mobile-tab mobile-tab--upload">
         <IconUpload className="mobile-tab-icon" />
-        <span>Add</span>
+        <span>{t('nav.add')}</span>
       </Link>
       <Link to="/expenses" className={`mobile-tab ${isExpensesActive ? 'mobile-tab--active' : ''}`}>
         <IconExpenses className="mobile-tab-icon" />
-        <span>Expenses</span>
+        <span>{t('nav.expenses')}</span>
       </Link>
       {user.role !== 'EMPLOYEE' && (
         <Link
@@ -85,7 +49,7 @@ export function MobileBottomNav({ user }: { user: AuthUser }) {
           className={`mobile-tab ${location.pathname === '/approvals' ? 'mobile-tab--active' : ''}`}
         >
           <IconApprovals className="mobile-tab-icon" />
-          <span>Approvals</span>
+          <span>{t('nav.approvals')}</span>
         </Link>
       )}
     </nav>

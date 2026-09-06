@@ -22,6 +22,10 @@ model Organization {
   // there — the rate above is already set in whatever currency this is).
   defaultCurrency String @default("EUR")
 
+  // Fallback UI language for anyone who hasn't picked their own (stored in
+  // the browser, not here) — see SUPPORTED_LANGUAGES in backend/src/shared/languages.ts.
+  defaultLanguage String @default("en")
+
   users      User[]
   expenses   Expense[]
   categories Category[]

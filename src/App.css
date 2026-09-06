@@ -168,6 +168,7 @@ h1 {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
   border: 1px solid #e2e8f0;
   overflow: hidden;
+  transition: max-width 0.15s ease;
 }
 
 /* Dropzone */
@@ -202,6 +203,24 @@ h1 {
   border: none;
   background: transparent;
   min-height: 360px;
+}
+
+/* On a wide desktop monitor a 640px card leaves a lot of empty space beside
+   it — there's no natural second column of content here (the file preview
+   only exists inline, after a file is picked), so the fix is a bigger card
+   and a taller dropzone rather than a forced two-column layout. */
+@media (min-width: 1200px) {
+  .upload-card {
+    max-width: 860px;
+  }
+
+  .dropzone {
+    min-height: 420px;
+  }
+
+  .dropzone.has-file {
+    min-height: 460px;
+  }
 }
 
 .dropzone-content {
@@ -1145,14 +1164,14 @@ h1 {
   color: #3b82f6;
 }
 
-.review-grid {
+.detail-layout {
   display: grid;
   grid-template-columns: minmax(240px, 380px) 1fr;
   gap: 20px;
   align-items: start;
 }
 
-.review-preview {
+.detail-layout-aside {
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
@@ -1282,6 +1301,7 @@ h1 {
 
 .route-map-wrap {
   margin-top: 14px;
+  width: 100%;
 }
 
 .route-map {
@@ -1293,11 +1313,11 @@ h1 {
 }
 
 @media (max-width: 900px) {
-  .review-grid {
+  .detail-layout {
     grid-template-columns: 1fr;
   }
 
-  .review-preview {
+  .detail-layout-aside {
     position: static;
   }
 }
@@ -1728,6 +1748,110 @@ h1 {
   color: #b91c1c;
 }
 
+/* ===================== Desktop header ===================== */
+
+.desktop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 32px;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.desktop-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.language-switcher {
+  position: relative;
+}
+
+.language-switcher-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.language-switcher-trigger:hover {
+  background: #eef2f7;
+}
+
+.language-switcher-flag {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.language-switcher-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+}
+
+.language-switcher-dropdown {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  padding: 6px;
+  min-width: 160px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.language-switcher-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.language-switcher-option:hover {
+  background: #f8fafc;
+}
+
+.language-switcher-option--active {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.language-switcher-option-label {
+  flex: 1;
+}
+
+.language-switcher-check {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
 /* ===================== Mobile nav ===================== */
 
 .mobile-topbar {
@@ -1748,11 +1872,17 @@ h1 {
   color: #1e293b;
 }
 
-.mobile-user-menu {
+.mobile-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-menu {
   position: relative;
 }
 
-.mobile-user-avatar {
+.user-menu-avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -1764,13 +1894,13 @@ h1 {
   cursor: pointer;
 }
 
-.mobile-user-dropdown-backdrop {
+.user-menu-dropdown-backdrop {
   position: fixed;
   inset: 0;
   z-index: 25;
 }
 
-.mobile-user-dropdown {
+.user-menu-dropdown {
   position: absolute;
   top: 44px;
   right: 0;
@@ -1786,13 +1916,13 @@ h1 {
   gap: 8px;
 }
 
-.mobile-user-dropdown-name {
+.user-menu-dropdown-name {
   font-size: 14px;
   font-weight: 700;
   color: #1e293b;
 }
 
-.mobile-user-dropdown-link {
+.user-menu-dropdown-link {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1808,7 +1938,7 @@ h1 {
   text-align: left;
 }
 
-.mobile-user-dropdown-link:hover {
+.user-menu-dropdown-link:hover {
   background: #f8fafc;
 }
 
@@ -1868,7 +1998,8 @@ h1 {
 }
 
 @media (max-width: 899px) {
-  .sidebar {
+  .sidebar,
+  .desktop-header {
     display: none;
   }
 

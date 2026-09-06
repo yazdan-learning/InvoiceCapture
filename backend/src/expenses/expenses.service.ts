@@ -3,6 +3,7 @@ import { ExpenseStatus, Prisma } from '@prisma/client';
 import { NotFoundError, BadRequestError } from '../shared/errors';
 import { toCsv } from '../shared/csv';
 import { SUPPORTED_CURRENCIES } from '../shared/currencies';
+import { SUPPORTED_LANGUAGES } from '../shared/languages';
 import { expensesRepository, LineItemInput } from './expenses.repository';
 import {
   ApproverResolver,
@@ -240,6 +241,15 @@ export function createExpensesService({
       return {
         defaultCurrency: await expensesRepository.getOrganizationDefaultCurrency(organizationId),
         supportedCurrencies: SUPPORTED_CURRENCIES
+      };
+    },
+
+    // Same reasoning again — the UI language is org policy anyone logged in
+    // needs to read, not something they change from this endpoint.
+    async getSupportedLanguages(organizationId: string) {
+      return {
+        defaultLanguage: await expensesRepository.getOrganizationDefaultLanguage(organizationId),
+        supportedLanguages: SUPPORTED_LANGUAGES
       };
     },
 

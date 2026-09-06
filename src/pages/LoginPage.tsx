@@ -1,9 +1,11 @@
 import { FormEvent, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { useTranslation } from '../i18n/LanguageContext';
 
 export function LoginPage() {
   const { login, isAuthenticated } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState('');
@@ -24,7 +26,7 @@ export function LoginPage() {
       await login(email, password);
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : t('login.failed'));
     } finally {
       setSubmitting(false);
     }
@@ -32,11 +34,11 @@ export function LoginPage() {
 
   return (
     <div className="login-card">
-      <h2>Sign in</h2>
-      <p className="login-subtitle">Access your organization's expenses</p>
+      <h2>{t('login.title')}</h2>
+      <p className="login-subtitle">{t('login.subtitle')}</p>
       <form onSubmit={handleSubmit} className="login-form">
         <label className="form-field">
-          <span>Email</span>
+          <span>{t('login.email')}</span>
           <input
             type="email"
             value={email}
@@ -47,7 +49,7 @@ export function LoginPage() {
           />
         </label>
         <label className="form-field">
-          <span>Password</span>
+          <span>{t('login.password')}</span>
           <input
             type="password"
             value={password}
@@ -64,7 +66,7 @@ export function LoginPage() {
         )}
 
         <button className="button-primary login-submit" type="submit" disabled={submitting}>
-          {submitting ? 'Signing in…' : 'Sign in'}
+          {submitting ? t('login.signingIn') : t('login.signIn')}
         </button>
       </form>
     </div>
