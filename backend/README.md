@@ -25,12 +25,20 @@ to change providers later: `src/expenses/ports.ts` defines `InvoiceExtractor` (d
 extraction — still named for what it extracts, not the entity it's attached to),
 `FileStorage`, and `DistanceCalculator` (mileage distance); `src/expenses/adapters/`
 holds today's implementations (`n8n-extractor.ts`, `local-disk-storage.ts`,
-`google-directions.ts`, plus `unconfigured-distance-calculator.ts` as the no-op fallback
-when `GOOGLE_DIRECTIONS_API_KEY` isn't set). `expenses.routes.ts` is the composition root —
-it's the only place that picks which adapter to use, via constructor injection into
-`createExpensesService`. Swapping n8n for another extractor, local disk for S3, or Google
-Directions for another mapping provider means writing one new adapter class and changing
-the composition root — nothing else in the app imports n8n, `fs`, or the Google API directly.
+`s3-file-storage.ts`, `google-directions.ts`, plus `unconfigured-distance-calculator.ts` as
+the no-op fallback when `GOOGLE_DIRECTIONS_API_KEY` isn't set). `expenses.routes.ts` is the
+composition root — it's the only place that picks which adapter to use, via constructor
+injection into `createExpensesService`. Swapping n8n for another extractor, or Google
+Directions for another mapping provider, means writing one new adapter class and changing
+the composition root — nothing else in the app imports n8n or the Google API directly.
+
+`FileStorage` already has two adapters and is picked at boot by `FILE_STORAGE_PROVIDER`
+(`local`, the default — writes under `UPLOADS_DIR`; or `s3` — any S3-compatible bucket, see
+`S3FileStorage`'s doc comment and `.env.example` for the `S3_*` vars). Same interface either
+way (`save()` returns an opaque stored-path string, `read()` takes it back), so nothing else
+in the app knows or cares which one is active. File access is always private, proxied
+through this app's own authenticated `/api/expenses/:id/file` route — neither adapter ever
+hands out a public URL, so this holds regardless of provider.
 
 ## Data model
 

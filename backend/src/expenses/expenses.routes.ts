@@ -7,11 +7,13 @@ import { createExpensesController } from './expenses.controller';
 import { createExpensesService } from './expenses.service';
 import { N8nInvoiceExtractor } from './adapters/n8n-extractor';
 import { LocalDiskFileStorage } from './adapters/local-disk-storage';
+import { S3FileStorage } from './adapters/s3-file-storage';
 import { GoogleDirectionsCalculator } from './adapters/google-directions';
 import { UnconfiguredDistanceCalculator } from './adapters/unconfigured-distance-calculator';
 import { FrankfurterCurrencyConverter } from './adapters/frankfurter-currency-converter';
 import { asyncHandler } from '../shared/asyncHandler';
 import { validate } from '../shared/validate';
+import { FileStorage } from './ports';
 import {
   approveSchema,
   createMileageSchema,
@@ -38,10 +40,14 @@ const upload = multer({
 });
 
 // Composition root for this feature: pick concrete adapters here. Swapping n8n
-// for another extractor, or local disk for S3, means changing only these two lines.
+// for another extractor, or local disk for S3, means changing only these lines
+// (or, for storage, just the FILE_STORAGE_PROVIDER env var).
+const fileStorage: FileStorage =
+  env.fileStorageProvider === 's3' ? new S3FileStorage(env.s3) : new LocalDiskFileStorage(env.uploadsDir);
+
 const expensesService = createExpensesService({
   extractor: new N8nInvoiceExtractor({ baseUrl: env.n8nBaseUrl, extractPath: env.n8nExtractPath }),
-  fileStorage: new LocalDiskFileStorage(env.uploadsDir),
+  fileStorage,
   approverResolver: authService,
   distanceCalculator: env.googleDirectionsApiKey
     ? new GoogleDirectionsCalculator(env.googleDirectionsApiKey)
