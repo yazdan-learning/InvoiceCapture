@@ -84,6 +84,13 @@ export const expensesRepository = {
     });
   },
 
+  // Cascades to ExpenseLineItem/Approval at the DB level (onDelete: Cascade
+  // in schema.prisma) — the file itself is a separate concern, deleted by
+  // the service via the FileStorage port before this runs.
+  delete(id: string) {
+    return prisma.expense.delete({ where: { id } });
+  },
+
   findPotentialDuplicate(
     organizationId: string,
     params: { vendorName?: string | null; invoiceNumber?: string | null; totalAmount?: number | null }

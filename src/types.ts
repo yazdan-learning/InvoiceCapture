@@ -95,6 +95,7 @@ export type UserSummary = {
   email: string;
   role: Role;
   managerId: string | null;
+  active: boolean;
   createdAt: string;
 };
 

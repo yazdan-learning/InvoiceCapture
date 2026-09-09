@@ -5,7 +5,7 @@ import { validate } from '../shared/validate';
 import { createAuthController } from './auth.controller';
 import { createAuthService } from './auth.service';
 import { requireAuth, requireRole } from './auth.middleware';
-import { createUserSchema, loginSchema } from './auth.schema';
+import { createUserSchema, loginSchema, updateUserSchema } from './auth.schema';
 
 // Composition root for the auth module. Exported so other feature modules
 // (invoices) can depend on the one method they need (getManagerId) without
@@ -27,4 +27,19 @@ authRouter.post(
   requireRole('ADMIN'),
   validate(createUserSchema, 'body'),
   asyncHandler(authController.createUser)
+);
+
+authRouter.patch(
+  '/users/:id',
+  requireAuth,
+  requireRole('ADMIN'),
+  validate(updateUserSchema, 'body'),
+  asyncHandler(authController.updateUser)
+);
+
+authRouter.delete(
+  '/users/:id',
+  requireAuth,
+  requireRole('ADMIN'),
+  asyncHandler(authController.deactivateUser)
 );

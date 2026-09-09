@@ -24,6 +24,19 @@ async function parseJsonOrThrow<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+// For endpoints that reply 204 No Content on success — response.json() would
+// throw on the empty body, so this only parses a body when there's an error.
+async function throwIfError(response: Response): Promise<void> {
+  if (response.status === 401) {
+    clearSession();
+    window.dispatchEvent(new Event('auth:unauthorized'));
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error || `Request failed with status ${response.status}`);
+  }
+}
+
 export type LoginResult = {
   token: string;
   user: AuthUser;
@@ -146,6 +159,14 @@ export async function updateExpense(
     body: JSON.stringify(payload)
   });
   return parseJsonOrThrow(response);
+}
+
+export async function deleteExpense(id: string, apiBaseUrl = defaultBaseUrl): Promise<void> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}`, apiBaseUrl), {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  return throwIfError(response);
 }
 
 export type CreateMileagePayload = {
@@ -303,6 +324,34 @@ export async function createUser(payload: CreateUserPayload, apiBaseUrl = defaul
     body: JSON.stringify(payload)
   });
   return parseJsonOrThrow(response);
+}
+
+export type UpdateUserPayload = Partial<{
+  email: string;
+  name: string;
+  role: Role;
+  managerId: string | null;
+}>;
+
+export async function updateUser(
+  id: string,
+  payload: UpdateUserPayload,
+  apiBaseUrl = defaultBaseUrl
+): Promise<UserSummary> {
+  const response = await fetch(apiUrl(`/api/auth/users/${id}`, apiBaseUrl), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload)
+  });
+  return parseJsonOrThrow(response);
+}
+
+export async function deactivateUser(id: string, apiBaseUrl = defaultBaseUrl): Promise<void> {
+  const response = await fetch(apiUrl(`/api/auth/users/${id}`, apiBaseUrl), {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  return throwIfError(response);
 }
 
 export type OrganizationSettings = {

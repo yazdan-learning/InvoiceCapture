@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { getOrganizationSettings, updateOrganizationSettings } from '../api';
 import { useTranslation, SUPPORTED_LANGUAGES, LANGUAGE_LABELS, Language } from '../i18n/LanguageContext';
+import { Select } from '../components/Select';
 
 export function AdminSettingsPage() {
   const { t } = useTranslation();
@@ -77,13 +78,11 @@ export function AdminSettingsPage() {
               <div className="form-grid">
                 <label className="form-field">
                   <span>{t('adminSettings.defaultCurrency')}</span>
-                  <select value={defaultCurrency} onChange={(e) => setDefaultCurrency(e.target.value)}>
-                    {supportedCurrencies.map((code) => (
-                      <option key={code} value={code}>
-                        {code}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    value={defaultCurrency}
+                    onChange={setDefaultCurrency}
+                    options={supportedCurrencies.map((code) => ({ value: code, label: code }))}
+                  />
                 </label>
               </div>
               <p className="field-hint">{t('adminSettings.currencyHint')}</p>
@@ -94,13 +93,11 @@ export function AdminSettingsPage() {
               <div className="form-grid">
                 <label className="form-field">
                   <span>{t('adminSettings.defaultLanguage')}</span>
-                  <select value={defaultLanguage} onChange={(e) => setDefaultLanguage(e.target.value as Language)}>
-                    {SUPPORTED_LANGUAGES.map((code) => (
-                      <option key={code} value={code}>
-                        {LANGUAGE_LABELS[code]}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    value={defaultLanguage}
+                    onChange={(value) => setDefaultLanguage(value as Language)}
+                    options={SUPPORTED_LANGUAGES.map((code) => ({ value: code, label: LANGUAGE_LABELS[code] }))}
+                  />
                 </label>
               </div>
               <p className="field-hint">{t('adminSettings.languageHint')}</p>

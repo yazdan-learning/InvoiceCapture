@@ -18,6 +18,16 @@ export function createAuthController(authService: AuthService) {
       res.json(users);
     },
 
+    async updateUser(req: Request, res: Response) {
+      const user = await authService.updateUser(req.actor.organizationId, req.params.id, req.body);
+      res.json(user);
+    },
+
+    async deactivateUser(req: Request, res: Response) {
+      await authService.deactivateUser(req.actor.organizationId, req.params.id, req.actor.userId);
+      res.status(204).send();
+    },
+
     async me(req: Request, res: Response) {
       res.json(req.actor);
     }

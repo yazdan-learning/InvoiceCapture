@@ -30,7 +30,11 @@ const de: Translations = {
     calculatingSuffix: ' — wird berechnet…',
     unknownVendor: 'Unbekannter Anbieter',
     mileageFallbackLabel: 'Kilometergeld',
-    logOut: 'Abmelden'
+    logOut: 'Abmelden',
+    edit: 'Bearbeiten',
+    delete: 'Löschen',
+    deleting: 'Wird gelöscht…',
+    confirm: 'Bestätigen'
   },
 
   table: {
@@ -169,8 +173,15 @@ const de: Translations = {
     loading: 'Benutzer werden geladen…',
     reportsTo: 'Berichtet an',
     userAdded: '{name} wurde hinzugefügt.',
+    userUpdated: '{name} wurde aktualisiert.',
     loadFailed: 'Benutzer konnten nicht geladen werden',
-    createFailed: 'Benutzer konnte nicht erstellt werden'
+    createFailed: 'Benutzer konnte nicht erstellt werden',
+    editUser: 'Benutzer bearbeiten',
+    saveChanges: 'Änderungen speichern',
+    active: 'Aktiv',
+    deactivated: 'Deaktiviert',
+    confirmDeactivate: 'Konto von {name} deaktivieren? Diese Person kann sich danach nicht mehr anmelden.',
+    deactivateFailed: 'Benutzer konnte nicht deaktiviert werden'
   },
 
   adminSettings: {
@@ -246,7 +257,10 @@ const de: Translations = {
     convertedOn: ' am {date}',
     useOriginal: 'Original verwenden',
     lineItems: 'Positionen',
-    totalCalculated: 'Gesamt (automatisch berechnet)'
+    totalCalculated: 'Gesamt (automatisch berechnet)',
+    delete: 'Löschen',
+    confirmDelete: 'Diese Ausgabe löschen? Dies kann nicht rückgängig gemacht werden.',
+    deleteFailed: 'Ausgabe konnte nicht gelöscht werden'
   },
 
   routeMap: {

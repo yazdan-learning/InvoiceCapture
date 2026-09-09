@@ -983,6 +983,20 @@ h1 {
   border-bottom: none;
 }
 
+.row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-bar-delete {
+  margin-right: auto;
+}
+
+.row-actions .button-outline {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
 .invoice-table tbody tr {
   cursor: pointer;
   transition: background 0.12s ease;
@@ -1253,6 +1267,113 @@ h1 {
   border-radius: 8px;
   border: 1px solid #e2e8f0;
   background: #f8fafc;
+}
+
+.form-field select {
+  /* The global color-scheme on :root doesn't reliably reach a <select>'s
+     native options popup on some Android/mobile browsers, which then falls
+     back to a dark system default — rendering the dropdown unreadable
+     (dark-on-dark) even though the closed control looks fine. Declaring it
+     again directly on the element fixes that popup specifically. */
+  color-scheme: light;
+}
+
+/* Custom dropdown (Select.tsx) — replaces native <select> app-wide because
+   the color-scheme fix above still isn't enough on some Android browsers
+   that force-dark form-control popups regardless of page hints. Rendering
+   our own dropdown avoids native popup rendering entirely. Trigger is sized
+   to match .form-field input/select exactly so swapping components doesn't
+   change any layout. */
+.custom-select {
+  position: relative;
+}
+
+.custom-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 14px;
+  color: #1e293b;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  cursor: pointer;
+  text-align: left;
+}
+
+.custom-select-trigger:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.custom-select-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.custom-select-placeholder {
+  color: #94a3b8;
+}
+
+.custom-select-chevron {
+  color: #94a3b8;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.custom-select-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+}
+
+.custom-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  padding: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.custom-select-option {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #1e293b;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.custom-select-option:hover {
+  background: #f8fafc;
+}
+
+.custom-select-option--active {
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
 }
 
 .form-field input:focus,

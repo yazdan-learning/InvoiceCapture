@@ -32,7 +32,11 @@ const en = {
     calculatingSuffix: ' — calculating…',
     unknownVendor: 'Unknown vendor',
     mileageFallbackLabel: 'Mileage',
-    logOut: 'Log out'
+    logOut: 'Log out',
+    edit: 'Edit',
+    delete: 'Delete',
+    deleting: 'Deleting…',
+    confirm: 'Confirm'
   },
 
   // ===== Table headers =====
@@ -180,8 +184,15 @@ const en = {
     loading: 'Loading users…',
     reportsTo: 'Reports to',
     userAdded: '{name} was added.',
+    userUpdated: '{name} was updated.',
     loadFailed: 'Failed to load users',
-    createFailed: 'Failed to create user'
+    createFailed: 'Failed to create user',
+    editUser: 'Edit user',
+    saveChanges: 'Save changes',
+    active: 'Active',
+    deactivated: 'Deactivated',
+    confirmDeactivate: 'Deactivate {name}? They will no longer be able to log in.',
+    deactivateFailed: 'Failed to deactivate user'
   },
 
   // ===== Admin: Settings =====
@@ -258,7 +269,10 @@ const en = {
     convertedOn: ' on {date}',
     useOriginal: 'Use original',
     lineItems: 'Line items',
-    totalCalculated: 'Total (calculated automatically)'
+    totalCalculated: 'Total (calculated automatically)',
+    delete: 'Delete',
+    confirmDelete: 'Delete this expense? This cannot be undone.',
+    deleteFailed: 'Failed to delete expense'
   },
 
   // ===== RouteMap =====

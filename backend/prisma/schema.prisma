@@ -47,6 +47,11 @@ model User {
   passwordHash String
   role         Role   @default(EMPLOYEE)
 
+  // Soft delete: deactivated users can't log in, but stay in place so
+  // historical Expense.uploadedBy / Approval.approverId / manager chains
+  // keep resolving correctly. "Delete user" in the UI sets this false.
+  active Boolean @default(true)
+
   // Approval routing lives here, not in a separate config table: your approver
   // is your manager. Multi-step/conditional rules later build on this same chain.
   managerId String?

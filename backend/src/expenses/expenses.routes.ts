@@ -112,6 +112,12 @@ expensesRouter.patch(
   asyncHandler(expensesController.update)
 );
 
+expensesRouter.delete(
+  '/:id',
+  validate(expenseIdParamsSchema, 'params'),
+  asyncHandler(expensesController.delete)
+);
+
 expensesRouter.post(
   '/:id/submit',
   validate(expenseIdParamsSchema, 'params'),

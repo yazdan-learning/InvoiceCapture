@@ -306,6 +306,28 @@ export function createExpensesService({
       return expensesRepository.update(id, fields as Prisma.ExpenseUpdateInput, items);
     },
 
+    // "Cancel" a fresh extraction and "delete a draft" are the same action:
+    // only pre-submission states are deletable (matches the isEditable gate
+    // the review page already applies), so a SUBMITTED expense can't vanish
+    // out from under whoever it's routed to for approval, and an APPROVED
+    // one — the actual financial record — can never be deleted, only voided
+    // through a real accounting adjustment later.
+    async delete(organizationId: string, id: string, actor: Actor) {
+      const expense = await expensesRepository.findById(organizationId, id);
+      if (!expense || !canView(expense, actor)) throw new NotFoundError('Expense not found');
+      if (!canEdit(expense, actor)) {
+        throw new BadRequestError('Only the person who submitted this expense can delete it');
+      }
+      if (!['EXTRACTED', 'FAILED', 'REJECTED'].includes(expense.status)) {
+        throw new BadRequestError('Only a draft, failed, or rejected expense can be deleted');
+      }
+
+      if (expense.filePath) {
+        await fileStorage.delete(expense.filePath);
+      }
+      await expensesRepository.delete(id);
+    },
+
     async submitForApproval(organizationId: string, id: string, actor: Actor) {
       const expense = await expensesRepository.findById(organizationId, id);
       if (!expense || !canView(expense, actor)) throw new NotFoundError('Expense not found');

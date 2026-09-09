@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { createUser, getUsers } from '../api';
+import { createUser, deactivateUser, getUsers, updateUser } from '../api';
 import { Role, UserSummary } from '../types';
 import { useTranslation } from '../i18n/LanguageContext';
+import { Select } from '../components/Select';
 
 type FormState = {
   name: string;
@@ -19,7 +20,8 @@ export function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [creating, setCreating] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const load = () => {
@@ -34,30 +36,66 @@ export function AdminUsersPage() {
   useEffect(load, []);
 
   const usersById = new Map(users.map((u) => [u.id, u]));
-  // Only users who can actually be routed to as an approver — matches the
-  // backend guard in expenses.service.ts submitForApproval.
-  const possibleManagers = users.filter((u) => u.role !== 'EMPLOYEE');
+  // Only active users who can actually be routed to as an approver — matches
+  // the backend guard in expenses.service.ts submitForApproval.
+  const possibleManagers = users.filter((u) => u.role !== 'EMPLOYEE' && u.active);
+
+  const startEdit = (user: UserSummary) => {
+    setEditingUserId(user.id);
+    setForm({ name: user.name, email: user.email, password: '', role: user.role, managerId: user.managerId ?? '' });
+    setError(null);
+    setSuccessMessage(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingUserId(null);
+    setForm(EMPTY_FORM);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setCreating(true);
+    setSaving(true);
     setError(null);
     setSuccessMessage(null);
     try {
-      await createUser({
-        name: form.name,
-        email: form.email,
-        password: form.password,
-        role: form.role,
-        managerId: form.managerId || null
-      });
-      setSuccessMessage(t('adminUsers.userAdded', { name: form.name }));
+      if (editingUserId) {
+        await updateUser(editingUserId, {
+          name: form.name,
+          email: form.email,
+          role: form.role,
+          managerId: form.managerId || null
+        });
+        setSuccessMessage(t('adminUsers.userUpdated', { name: form.name }));
+        setEditingUserId(null);
+      } else {
+        await createUser({
+          name: form.name,
+          email: form.email,
+          password: form.password,
+          role: form.role,
+          managerId: form.managerId || null
+        });
+        setSuccessMessage(t('adminUsers.userAdded', { name: form.name }));
+      }
       setForm(EMPTY_FORM);
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('adminUsers.createFailed'));
     } finally {
-      setCreating(false);
+      setSaving(false);
+    }
+  };
+
+  const handleDeactivate = async (user: UserSummary) => {
+    if (!window.confirm(t('adminUsers.confirmDeactivate', { name: user.name }))) return;
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      await deactivateUser(user.id);
+      if (editingUserId === user.id) cancelEdit();
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('adminUsers.deactivateFailed'));
     }
   };
 
@@ -79,7 +117,9 @@ export function AdminUsersPage() {
       )}
 
       <div className="review-form">
-        <h3 style={{ marginBottom: 12 }}>{t('adminUsers.addUser')}</h3>
+        <h3 style={{ marginBottom: 12 }}>
+          {editingUserId ? t('adminUsers.editUser') : t('adminUsers.addUser')}
+        </h3>
         <form onSubmit={handleSubmit}>
           <div className="form-grid">
             <label className="form-field">
@@ -95,39 +135,56 @@ export function AdminUsersPage() {
                 required
               />
             </label>
+            {!editingUserId && (
+              <label className="form-field">
+                <span>{t('adminUsers.password')}</span>
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  minLength={8}
+                  required
+                />
+              </label>
+            )}
             <label className="form-field">
-              <span>{t('adminUsers.password')}</span>
-              <input
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                minLength={8}
-                required
+              <span>{t('adminUsers.role')}</span>
+              <Select
+                value={form.role}
+                onChange={(value) => setForm({ ...form, role: value as Role })}
+                options={[
+                  { value: 'EMPLOYEE', label: t('adminUsers.roleEmployee') },
+                  { value: 'APPROVER', label: t('adminUsers.roleApprover') },
+                  { value: 'ADMIN', label: t('adminUsers.roleAdmin') }
+                ]}
               />
             </label>
             <label className="form-field">
-              <span>{t('adminUsers.role')}</span>
-              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>
-                <option value="EMPLOYEE">{t('adminUsers.roleEmployee')}</option>
-                <option value="APPROVER">{t('adminUsers.roleApprover')}</option>
-                <option value="ADMIN">{t('adminUsers.roleAdmin')}</option>
-              </select>
-            </label>
-            <label className="form-field">
               <span>{t('adminUsers.manager')}</span>
-              <select value={form.managerId} onChange={(e) => setForm({ ...form, managerId: e.target.value })}>
-                <option value="">{t('adminUsers.noManager')}</option>
-                {possibleManagers.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({m.role})
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={form.managerId}
+                onChange={(value) => setForm({ ...form, managerId: value })}
+                options={[
+                  { value: '', label: t('adminUsers.noManager') },
+                  ...possibleManagers
+                    .filter((m) => m.id !== editingUserId)
+                    .map((m) => ({ value: m.id, label: `${m.name} (${m.role})` }))
+                ]}
+              />
             </label>
           </div>
           <div className="action-bar">
-            <button className="button-primary" type="submit" disabled={creating}>
-              {creating ? t('adminUsers.adding') : t('adminUsers.addUserButton')}
+            {editingUserId && (
+              <button className="button-outline" type="button" onClick={cancelEdit} disabled={saving}>
+                {t('common.cancel')}
+              </button>
+            )}
+            <button className="button-primary" type="submit" disabled={saving}>
+              {saving
+                ? t('common.saving')
+                : editingUserId
+                  ? t('adminUsers.saveChanges')
+                  : t('adminUsers.addUserButton')}
             </button>
           </div>
         </form>
@@ -144,15 +201,34 @@ export function AdminUsersPage() {
                 <th>{t('adminUsers.email')}</th>
                 <th>{t('adminUsers.role')}</th>
                 <th>{t('adminUsers.reportsTo')}</th>
+                <th>{t('table.status')}</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.id}>
+                <tr key={u.id} style={u.active ? undefined : { opacity: 0.5 }}>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
                   <td>{u.role}</td>
                   <td>{u.managerId ? usersById.get(u.managerId)?.name ?? '—' : '—'}</td>
+                  <td>{u.active ? t('adminUsers.active') : t('adminUsers.deactivated')}</td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="button-outline" type="button" onClick={() => startEdit(u)}>
+                        {t('common.edit')}
+                      </button>
+                      {u.active && (
+                        <button
+                          className="button-outline button-danger"
+                          type="button"
+                          onClick={() => handleDeactivate(u)}
+                        >
+                          {t('common.delete')}
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

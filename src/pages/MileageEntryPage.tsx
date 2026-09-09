@@ -4,6 +4,7 @@ import { createMileageExpense, getCategories, getMileageRate, previewMileageDist
 import { Category } from '../types';
 import { LocationAutocompleteInput } from '../components/LocationAutocompleteInput';
 import { RouteMap } from '../components/RouteMap';
+import { Select } from '../components/Select';
 import { isGoogleMapsConfigured } from '../lib/googleMaps';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useIsDesktop } from '../hooks/useIsDesktop';
@@ -192,14 +193,14 @@ export function MileageEntryPage() {
           <div className="form-grid">
             <label className="form-field">
               <span>{t('common.category')}</span>
-              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                <option value="">{t('common.uncategorized')}</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={categoryId}
+                onChange={setCategoryId}
+                options={[
+                  { value: '', label: t('common.uncategorized') },
+                  ...categories.map((cat) => ({ value: cat.id, label: cat.name }))
+                ]}
+              />
             </label>
           </div>
         </div>

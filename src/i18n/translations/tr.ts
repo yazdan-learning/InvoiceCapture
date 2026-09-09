@@ -30,7 +30,11 @@ const tr: Translations = {
     calculatingSuffix: ' — hesaplanıyor…',
     unknownVendor: 'Bilinmeyen satıcı',
     mileageFallbackLabel: 'Kilometre',
-    logOut: 'Çıkış yap'
+    logOut: 'Çıkış yap',
+    edit: 'Düzenle',
+    delete: 'Sil',
+    deleting: 'Siliniyor…',
+    confirm: 'Onayla'
   },
 
   table: {
@@ -169,8 +173,15 @@ const tr: Translations = {
     loading: 'Kullanıcılar yükleniyor…',
     reportsTo: 'Bağlı olduğu kişi',
     userAdded: '{name} eklendi.',
+    userUpdated: '{name} güncellendi.',
     loadFailed: 'Kullanıcılar yüklenemedi',
-    createFailed: 'Kullanıcı oluşturulamadı'
+    createFailed: 'Kullanıcı oluşturulamadı',
+    editUser: 'Kullanıcıyı düzenle',
+    saveChanges: 'Değişiklikleri kaydet',
+    active: 'Aktif',
+    deactivated: 'Devre dışı',
+    confirmDeactivate: '{name} devre dışı bırakılsın mı? Artık giriş yapamayacak.',
+    deactivateFailed: 'Kullanıcı devre dışı bırakılamadı'
   },
 
   adminSettings: {
@@ -246,7 +257,10 @@ const tr: Translations = {
     convertedOn: ' — {date} tarihinde',
     useOriginal: 'Orijinali kullan',
     lineItems: 'Kalemler',
-    totalCalculated: 'Toplam (otomatik hesaplanır)'
+    totalCalculated: 'Toplam (otomatik hesaplanır)',
+    delete: 'Sil',
+    confirmDelete: 'Bu gider silinsin mi? Bu işlem geri alınamaz.',
+    deleteFailed: 'Gider silinemedi'
   },
 
   routeMap: {

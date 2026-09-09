@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   decideExpense,
+  deleteExpense,
   getCategories,
   getExpense,
   getExpenseFileBlobUrl,
@@ -15,6 +16,7 @@ import { Category, Expense } from '../types';
 import { StatusPill } from '../components/StatusPill';
 import { LocationAutocompleteInput } from '../components/LocationAutocompleteInput';
 import { RouteMap } from '../components/RouteMap';
+import { Select } from '../components/Select';
 import { isGoogleMapsConfigured } from '../lib/googleMaps';
 import { useAuth } from '../auth/AuthContext';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -45,7 +47,7 @@ type FormState = {
   mileageRoundTrip: boolean;
 };
 
-type SavingAction = 'draft' | 'submit' | 'approve' | 'reject' | null;
+type SavingAction = 'draft' | 'submit' | 'approve' | 'reject' | 'delete' | null;
 
 function toDateInputValue(value: string | null): string {
   if (!value) return '';
@@ -252,6 +254,24 @@ export function ExpenseReviewPage() {
     runCalculate(form.mileageFrom, form.mileageTo);
   };
 
+  // Covers both "cancel" (a fresh upload you decide not to keep) and
+  // "delete a draft" — same action, only reachable while isEditable, so a
+  // SUBMITTED or APPROVED expense can never hit this.
+  const handleDelete = async () => {
+    if (!id) return;
+    if (!window.confirm(t('review.confirmDelete'))) return;
+
+    setSaving('delete');
+    setError(null);
+    try {
+      await deleteExpense(id);
+      navigate('/expenses');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('review.deleteFailed'));
+      setSaving(null);
+    }
+  };
+
   const handleSaveDraft = async () => {
     if (!id) return;
     const payload = buildPayload();
@@ -359,6 +379,14 @@ export function ExpenseReviewPage() {
     <>
       {isEditable && (
         <div className="action-bar">
+          <button
+            className="button-outline button-danger action-bar-delete"
+            disabled={saving !== null}
+            onClick={handleDelete}
+            type="button"
+          >
+            {saving === 'delete' ? t('common.deleting') : t('review.delete')}
+          </button>
           <button className="button-outline" disabled={saving !== null} onClick={handleSaveDraft} type="button">
             {saving === 'draft' ? t('common.saving') : t('common.saveDraft')}
           </button>
@@ -576,14 +604,14 @@ export function ExpenseReviewPage() {
                 <div className="form-grid">
                   <label className="form-field">
                     <span>{t('common.category')}</span>
-                    <select value={form.categoryId} onChange={(e) => updateField('categoryId', e.target.value)}>
-                      <option value="">{t('common.uncategorized')}</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
+                    <Select
+                      value={form.categoryId}
+                      onChange={(value) => updateField('categoryId', value)}
+                      options={[
+                        { value: '', label: t('common.uncategorized') },
+                        ...categories.map((cat) => ({ value: cat.id, label: cat.name }))
+                      ]}
+                    />
                   </label>
                   <label className="form-field">
                     <span>{t('review.totalCalculated')}</span>
@@ -655,14 +683,14 @@ export function ExpenseReviewPage() {
                   </label>
                   <label className="form-field">
                     <span>{t('common.category')}</span>
-                    <select value={form.categoryId} onChange={(e) => updateField('categoryId', e.target.value)}>
-                      <option value="">{t('common.uncategorized')}</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
+                    <Select
+                      value={form.categoryId}
+                      onChange={(value) => updateField('categoryId', value)}
+                      options={[
+                        { value: '', label: t('common.uncategorized') },
+                        ...categories.map((cat) => ({ value: cat.id, label: cat.name }))
+                      ]}
+                    />
                   </label>
                   <label className="form-field">
                     <span>{t('review.invoiceDate')}</span>
@@ -720,17 +748,15 @@ export function ExpenseReviewPage() {
                   </label>
                   <label className="form-field">
                     <span>{t('common.currency')}</span>
-                    <select value={form.currency} onChange={(e) => updateField('currency', e.target.value)}>
-                      <option value="">—</option>
-                      {(form.currency && !supportedCurrencies.includes(form.currency)
+                    <Select
+                      value={form.currency}
+                      onChange={(value) => updateField('currency', value)}
+                      placeholder="—"
+                      options={(form.currency && !supportedCurrencies.includes(form.currency)
                         ? [form.currency, ...supportedCurrencies]
                         : supportedCurrencies
-                      ).map((code) => (
-                        <option key={code} value={code}>
-                          {code}
-                        </option>
-                      ))}
-                    </select>
+                      ).map((code) => ({ value: code, label: code }))}
+                    />
                   </label>
                   <label className="form-field">
                     <span>{t('review.paymentMethod')}</span>

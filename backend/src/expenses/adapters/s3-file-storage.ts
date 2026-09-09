@@ -1,4 +1,4 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import path from 'path';
 import { FileStorage, UploadedFile } from '../ports';
 
@@ -74,5 +74,9 @@ export class S3FileStorage implements FileStorage {
       new GetObjectCommand({ Bucket: this.config.bucket, Key: storedPath })
     );
     return streamToBuffer(result.Body);
+  }
+
+  async delete(storedPath: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.config.bucket, Key: storedPath }));
   }
 }

@@ -51,6 +51,7 @@ export interface InvoiceExtractor {
 export interface FileStorage {
   save(params: { organizationId: string; expenseId: string; file: UploadedFile }): Promise<string>;
   read(storedPath: string): Promise<Buffer>;
+  delete(storedPath: string): Promise<void>;
 }
 
 export type Approver = {

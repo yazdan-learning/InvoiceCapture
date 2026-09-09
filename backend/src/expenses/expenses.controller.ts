@@ -76,6 +76,11 @@ export function createExpensesController(expensesService: ExpensesService) {
       res.json(expense);
     },
 
+    async delete(req: Request, res: Response) {
+      await expensesService.delete(req.actor.organizationId, req.params.id, req.actor);
+      res.status(204).send();
+    },
+
     async exportCsv(req: Request, res: Response) {
       const { status } = req.query as { status?: ExpenseStatus };
       const csv = await expensesService.exportCsv(req.actor.organizationId, status, req.actor);

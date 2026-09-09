@@ -28,4 +28,8 @@ export class LocalDiskFileStorage implements FileStorage {
   async read(storedPath: string): Promise<Buffer> {
     return fs.readFile(path.join(this.uploadsDir, storedPath));
   }
+
+  async delete(storedPath: string): Promise<void> {
+    await fs.rm(path.join(this.uploadsDir, storedPath), { force: true });
+  }
 }
