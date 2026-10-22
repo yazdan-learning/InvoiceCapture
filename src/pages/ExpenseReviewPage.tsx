@@ -93,6 +93,29 @@ function numberOrNull(value: string): number | null {
   return Number.isNaN(num) ? null : num;
 }
 
+// The backend's handwritten-invoice warning: "Handwritten invoice - ... Check
+// especially: invoiceDate, totalAmount" (see direct-extractor.ts).
+const HANDWRITTEN_PREFIX = 'Handwritten invoice';
+const FIELD_LABELS: Record<string, string> = {
+  vendorName: 'review.vendorName',
+  vendorAddress: 'review.vendorAddress',
+  vendorTaxId: 'review.taxId',
+  invoiceNumber: 'review.invoiceNumber',
+  invoiceDate: 'review.invoiceDate',
+  subtotal: 'review.subtotal',
+  taxAmount: 'review.taxAmount',
+  totalAmount: 'review.totalAmount',
+  currency: 'common.currency',
+  items: 'review.lineItems'
+};
+
+/** The fields to check first on a handwritten reading, or null for any other warning. */
+function handwrittenFields(errorMessage: string | null): string[] | null {
+  if (!errorMessage?.startsWith(HANDWRITTEN_PREFIX)) return null;
+  const listed = errorMessage.split('Check especially:')[1];
+  return listed ? listed.split(',').map((f) => f.trim()).filter(Boolean) : [];
+}
+
 function formatDateTime(value: string | null): string {
   if (!value) return '';
   return new Date(value).toLocaleString();
@@ -455,6 +478,8 @@ export function ExpenseReviewPage() {
     </>
   );
 
+  const handwrittenCheck = handwrittenFields(expense.errorMessage);
+
   return (
     <div className="review-page">
       <div className="review-header">
@@ -473,6 +498,26 @@ export function ExpenseReviewPage() {
       {expense.isDuplicate && (
         <div className="alert alert-warning">
           <span>{t('review.duplicateNotice')}</span>
+        </div>
+      )}
+
+      {expense.status === 'EXTRACTED' && expense.errorMessage && (
+        <div className="alert alert-warning">
+          {handwrittenCheck ? (
+            <span>
+              {t('review.handwrittenCheck')}
+              {handwrittenCheck.length > 0 && (
+                <>
+                  {' '}
+                  <strong>
+                    {t('review.checkEspecially')} {handwrittenCheck.map((f) => (FIELD_LABELS[f] ? t(FIELD_LABELS[f]) : f)).join(', ')}
+                  </strong>
+                </>
+              )}
+            </span>
+          ) : (
+            <span>{t('review.amountsUnchecked')}</span>
+          )}
         </div>
       )}
 
@@ -626,7 +671,7 @@ export function ExpenseReviewPage() {
               <div className="form-section">
                 <label className="form-field form-field--wide">
                   <span>{t('common.notes')}</span>
-                  <textarea rows={3} value={form.notes} onChange={(e) => updateField('notes', e.target.value)} />
+                  <textarea dir="auto" rows={3} value={form.notes} onChange={(e) => updateField('notes', e.target.value)} />
                 </label>
               </div>
             </fieldset>
@@ -655,7 +700,7 @@ export function ExpenseReviewPage() {
                 <div className="form-grid">
                   <label className="form-field">
                     <span>{t('review.vendorName')}</span>
-                    <input value={form.vendorName} onChange={(e) => updateField('vendorName', e.target.value)} />
+                    <input dir="auto" value={form.vendorName} onChange={(e) => updateField('vendorName', e.target.value)} />
                   </label>
                   <label className="form-field">
                     <span>{t('review.taxId')}</span>
@@ -664,6 +709,7 @@ export function ExpenseReviewPage() {
                   <label className="form-field form-field--wide">
                     <span>{t('review.vendorAddress')}</span>
                     <input
+                      dir="auto"
                       value={form.vendorAddress}
                       onChange={(e) => updateField('vendorAddress', e.target.value)}
                     />
@@ -677,6 +723,7 @@ export function ExpenseReviewPage() {
                   <label className="form-field">
                     <span>{t('review.invoiceNumber')}</span>
                     <input
+                      dir="auto"
                       value={form.invoiceNumber}
                       onChange={(e) => updateField('invoiceNumber', e.target.value)}
                     />
@@ -814,7 +861,7 @@ export function ExpenseReviewPage() {
                       <tbody>
                         {expense.items.map((item) => (
                           <tr key={item.id}>
-                            <td>{item.description}</td>
+                            <td dir="auto">{item.description}</td>
                             <td className="align-right">{item.quantity ?? '—'}</td>
                             <td className="align-right">{item.unitPrice ?? '—'}</td>
                             <td className="align-right">{item.totalPrice ?? '—'}</td>
@@ -829,7 +876,7 @@ export function ExpenseReviewPage() {
               <div className="form-section">
                 <label className="form-field form-field--wide">
                   <span>{t('common.notes')}</span>
-                  <textarea rows={3} value={form.notes} onChange={(e) => updateField('notes', e.target.value)} />
+                  <textarea dir="auto" rows={3} value={form.notes} onChange={(e) => updateField('notes', e.target.value)} />
                 </label>
               </div>
             </fieldset>

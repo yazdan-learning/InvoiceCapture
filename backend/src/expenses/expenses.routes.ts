@@ -6,6 +6,9 @@ import { requireRole } from '../auth/auth.middleware';
 import { createExpensesController } from './expenses.controller';
 import { createExpensesService } from './expenses.service';
 import { N8nInvoiceExtractor } from './adapters/n8n-extractor';
+import { DirectInvoiceExtractor } from './adapters/direct-extractor';
+import { MistralOcr } from '../ai/gateway/mistral-ocr';
+import { OpenAiCompatibleLlm } from '../ai/gateway/openai-compatible';
 import { LocalDiskFileStorage } from './adapters/local-disk-storage';
 import { S3FileStorage } from './adapters/s3-file-storage';
 import { GoogleDirectionsCalculator } from './adapters/google-directions';
@@ -13,7 +16,7 @@ import { UnconfiguredDistanceCalculator } from './adapters/unconfigured-distance
 import { FrankfurterCurrencyConverter } from './adapters/frankfurter-currency-converter';
 import { asyncHandler } from '../shared/asyncHandler';
 import { validate } from '../shared/validate';
-import { FileStorage } from './ports';
+import { FileStorage, InvoiceExtractor } from './ports';
 import {
   approveSchema,
   createMileageSchema,
@@ -45,8 +48,19 @@ const upload = multer({
 const fileStorage: FileStorage =
   env.fileStorageProvider === 's3' ? new S3FileStorage(env.s3) : new LocalDiskFileStorage(env.uploadsDir);
 
+const extractor: InvoiceExtractor =
+  env.invoiceExtractor === 'n8n'
+    ? new N8nInvoiceExtractor({ baseUrl: env.n8nBaseUrl, extractPath: env.n8nExtractPath })
+    : new DirectInvoiceExtractor(
+        new MistralOcr({ ...env.ocr, timeoutMs: env.aiTimeoutMs }),
+        new OpenAiCompatibleLlm({ ...env.llm, timeoutMs: env.aiTimeoutMs }),
+        env.vision.apiKey
+          ? new OpenAiCompatibleLlm({ ...env.vision, models: { fast: env.vision.model, smart: env.vision.model } })
+          : undefined
+      );
+
 const expensesService = createExpensesService({
-  extractor: new N8nInvoiceExtractor({ baseUrl: env.n8nBaseUrl, extractPath: env.n8nExtractPath }),
+  extractor,
   fileStorage,
   approverResolver: authService,
   distanceCalculator: env.googleDirectionsApiKey

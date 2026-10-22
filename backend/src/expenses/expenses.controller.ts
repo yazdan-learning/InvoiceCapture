@@ -10,7 +10,9 @@ export function createExpensesController(expensesService: ExpensesService) {
       const expense = await expensesService.uploadAndExtract(
         req.actor.organizationId,
         req.actor.userId,
-        req.file
+        req.file,
+        // multipart form field: "true" when the user ticked "handwritten"
+        { handwritten: req.body?.handwritten === 'true' }
       );
       res.status(201).json(expense);
     },

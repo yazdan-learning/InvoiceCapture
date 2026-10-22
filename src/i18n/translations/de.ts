@@ -138,7 +138,9 @@ const de: Translations = {
     dropHint: 'Rechnung hier ablegen oder klicken zum Durchsuchen',
     fileTypeHint: 'Unterstützt JPEG, PNG, PDF • Max. 10 MB',
     removeFile: 'Entfernen',
-    processInvoice: 'Rechnung verarbeiten'
+    processInvoice: 'Rechnung verarbeiten',
+    handwritten: 'Handschriftliche Rechnung',
+    handwrittenHint: 'Wird von einem Handschrift-Modell aus dem Foto gelesen. Bitte das Ergebnis genau prüfen.'
   },
 
   mileage: {
@@ -222,6 +224,9 @@ const de: Translations = {
       '⚠ Dies scheint ein Duplikat einer bereits im System vorhandenen Ausgabe zu sein (gleicher Anbieter, gleiche Nummer und gleicher Betrag).',
     extractionFailed: 'Extraktion fehlgeschlagen',
     extractionFailedManualHint: 'Sie können die Felder weiterhin manuell unten ausfüllen.',
+    amountsUnchecked: 'Die Positionen ergeben nicht den Rechnungsbetrag. Bitte prüfen Sie die Beträge vor dem Einreichen.',
+    handwrittenCheck: 'Handschriftliche Rechnung: Bitte vergleichen Sie vor dem Einreichen jedes Feld mit dem Foto.',
+    checkEspecially: 'Bitte besonders prüfen:',
     submitted: 'Eingereicht',
     waitingOnApproval: ' — wartet auf die Genehmigung von {name}',
     submittedForYou: 'Eingereicht von {name}. Prüfen Sie die Details und genehmigen oder lehnen Sie unten ab.',

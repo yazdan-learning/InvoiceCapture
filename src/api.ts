@@ -53,6 +53,8 @@ export async function login(email: string, password: string, apiBaseUrl = defaul
 
 type UploadReceiptParams = {
   file: File;
+  /** Read from the photo by the handwriting (vision) model. */
+  handwritten?: boolean;
   apiBaseUrl?: string;
 };
 
@@ -60,10 +62,12 @@ type UploadReceiptParams = {
 // calls n8n itself, persists the result, and returns the saved Expense record.
 export async function uploadReceipt({
   file,
+  handwritten = false,
   apiBaseUrl = defaultBaseUrl
 }: UploadReceiptParams): Promise<ExtractResponse> {
   const formData = new FormData();
   formData.append('file', file);
+  if (handwritten) formData.append('handwritten', 'true');
 
   const response = await fetch(apiUrl('/api/expenses', apiBaseUrl), {
     method: 'POST',

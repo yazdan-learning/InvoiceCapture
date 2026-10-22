@@ -9,6 +9,7 @@ import {
   ApproverResolver,
   CurrencyConverter,
   DistanceCalculator,
+  ExtractOptions,
   FileStorage,
   InvoiceExtractor,
   UploadedFile
@@ -71,14 +72,14 @@ export function createExpensesService({
   }
 
   return {
-    async uploadAndExtract(organizationId: string, userId: string, file: UploadedFile) {
+    async uploadAndExtract(organizationId: string, userId: string, file: UploadedFile, options: ExtractOptions = {}) {
       const expenseId = randomUUID();
       const relativePath = await fileStorage.save({ organizationId, expenseId, file });
 
       let extraction: Awaited<ReturnType<InvoiceExtractor['extract']>> | null = null;
       let errorMessage: string | null = null;
       try {
-        extraction = await extractor.extract(file);
+        extraction = await extractor.extract(file, options);
       } catch (err) {
         errorMessage = err instanceof Error ? err.message : 'Extraction failed';
       }

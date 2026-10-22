@@ -136,7 +136,9 @@ const pl: Translations = {
     dropHint: 'Upuść fakturę tutaj lub kliknij, aby przeglądać',
     fileTypeHint: 'Obsługuje JPEG, PNG, PDF • Maks. 10 MB',
     removeFile: 'Usuń',
-    processInvoice: 'Przetwórz fakturę'
+    processInvoice: 'Przetwórz fakturę',
+    handwritten: 'Faktura odręczna',
+    handwrittenHint: 'Odczytywana ze zdjęcia przez model pisma odręcznego. Sprawdź dokładnie wynik.'
   },
 
   mileage: {
@@ -220,6 +222,9 @@ const pl: Translations = {
       '⚠ To wygląda na duplikat wydatku już istniejącego w systemie (ten sam dostawca, numer i kwota).',
     extractionFailed: 'Wyodrębnianie nie powiodło się',
     extractionFailedManualHint: 'Możesz nadal wypełnić pola ręcznie poniżej.',
+    amountsUnchecked: 'Pozycje nie sumują się do kwoty faktury. Sprawdź kwoty przed wysłaniem.',
+    handwrittenCheck: 'Faktura odręczna: przed wysłaniem porównaj każde pole ze zdjęciem.',
+    checkEspecially: 'Sprawdź szczególnie:',
     submitted: 'Wysłano',
     waitingOnApproval: ' — oczekuje na zatwierdzenie przez {name}',
     submittedForYou: 'Wysłane przez {name}. Sprawdź szczegóły i zatwierdź lub odrzuć poniżej.',

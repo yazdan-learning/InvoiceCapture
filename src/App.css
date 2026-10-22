@@ -335,6 +335,34 @@ h1 {
 }
 
 /* Action Bar */
+/* "Handwritten invoice" option on the upload card */
+.checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid #e2e8f0;
+  cursor: pointer;
+}
+
+.checkbox-field input {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+}
+
+.checkbox-field span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 500;
+}
+
+.checkbox-field small {
+  color: #64748b;
+  font-weight: 400;
+}
+
 .action-bar {
   display: flex;
   gap: 12px;
@@ -1153,6 +1181,12 @@ h1 {
 }
 
 /* ===================== Review page ===================== */
+
+/* Extracted text (e.g. Persian) keeps its own reading order via dir="auto",
+   but lines up on the left like the rest of the LTR UI — until RTL support. */
+[dir='auto'] {
+  text-align: left;
+}
 
 .review-page {
   width: 100%;

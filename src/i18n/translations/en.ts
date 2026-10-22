@@ -146,7 +146,9 @@ const en = {
     dropHint: 'Drop invoice here or click to browse',
     fileTypeHint: 'Supports JPEG, PNG, PDF • Max 10MB',
     removeFile: 'Remove',
-    processInvoice: 'Process Invoice'
+    processInvoice: 'Process Invoice',
+    handwritten: 'Handwritten invoice',
+    handwrittenHint: 'Read from the photo by a handwriting model. Please double-check the result.'
   },
 
   // ===== Mileage entry / mileage branch of review page =====
@@ -234,6 +236,9 @@ const en = {
     duplicateNotice: '⚠ This looks like a possible duplicate of an expense already in the system (same vendor, expense number, and amount).',
     extractionFailed: 'Extraction failed',
     extractionFailedManualHint: 'You can still fill in the fields manually below.',
+    amountsUnchecked: 'The items don’t add up to the invoice total. Please check the amounts before submitting.',
+    handwrittenCheck: 'Handwritten invoice: please compare every field with the photo before submitting.',
+    checkEspecially: 'Check especially:',
     submitted: 'Submitted',
     waitingOnApproval: ' — waiting on {name}\'s approval',
     submittedForYou: 'Submitted by {name}. Review the details and approve or reject below.',

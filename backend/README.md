@@ -24,7 +24,7 @@ Three exceptions get ports/adapters instead of plain layering, because all three
 to change providers later: `src/expenses/ports.ts` defines `InvoiceExtractor` (document/OCR
 extraction — still named for what it extracts, not the entity it's attached to),
 `FileStorage`, and `DistanceCalculator` (mileage distance); `src/expenses/adapters/`
-holds today's implementations (`n8n-extractor.ts`, `local-disk-storage.ts`,
+holds today's implementations (`direct-extractor.ts` — Mistral OCR + an LLM via `src/ai/gateway/`, the default; `n8n-extractor.ts` as a fallback with `INVOICE_EXTRACTOR=n8n`; `local-disk-storage.ts`,
 `s3-file-storage.ts`, `google-directions.ts`, plus `unconfigured-distance-calculator.ts` as
 the no-op fallback when `GOOGLE_DIRECTIONS_API_KEY` isn't set). `expenses.routes.ts` is the
 composition root — it's the only place that picks which adapter to use, via constructor
@@ -94,7 +94,7 @@ unless `ADMIN`:
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/expenses` | multipart upload (field `file`) → calls n8n → persists → returns Expense |
+| POST | `/api/expenses` | multipart upload (field `file`) → OCR + AI extraction → persists → returns Expense |
 | POST | `/api/expenses/mileage` | create a MILEAGE expense — `distanceKm` directly, or `from`/`to` to calculate it |
 | POST | `/api/expenses/mileage/distance` | preview distance/duration for `from`/`to` without creating an expense |
 | GET | `/api/expenses/mileage/rate` | current org's mileage reimbursement rate (for the FE's live total preview) |

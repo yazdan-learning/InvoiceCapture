@@ -28,6 +28,8 @@ export type ExtractedInvoiceData = {
   customerAddress: string | null;
   items: ExtractedInvoiceItem[];
   subtotal: number | null;
+  /** Discount on the whole invoice (تخفیف), only for checking the sums — not stored. */
+  discount?: number | null;
   taxRate: number | null;
   taxAmount: number | null;
   totalAmount: number | null;
@@ -44,8 +46,13 @@ export type ExtractionResult = {
   raw: unknown; // full provider response, stored as-is on the invoice for audit/debugging
 };
 
+export type ExtractOptions = {
+  /** The user ticked "handwritten": read from the photo with the vision model. */
+  handwritten?: boolean;
+};
+
 export interface InvoiceExtractor {
-  extract(file: UploadedFile): Promise<ExtractionResult>;
+  extract(file: UploadedFile, options?: ExtractOptions): Promise<ExtractionResult>;
 }
 
 export interface FileStorage {

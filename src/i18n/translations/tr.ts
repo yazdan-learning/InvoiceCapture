@@ -138,7 +138,9 @@ const tr: Translations = {
     dropHint: 'Faturayı buraya bırakın veya göz atmak için tıklayın',
     fileTypeHint: 'JPEG, PNG, PDF destekler • Maks. 10 MB',
     removeFile: 'Kaldır',
-    processInvoice: 'Faturayı İşle'
+    processInvoice: 'Faturayı İşle',
+    handwritten: 'El yazısı fatura',
+    handwrittenHint: 'Fotoğraftan el yazısı modeliyle okunur. Lütfen sonucu dikkatle kontrol edin.'
   },
 
   mileage: {
@@ -222,6 +224,9 @@ const tr: Translations = {
       '⚠ Bu, sistemde zaten bulunan bir giderin olası bir kopyası gibi görünüyor (aynı satıcı, numara ve tutar).',
     extractionFailed: 'Veri çıkarma başarısız oldu',
     extractionFailedManualHint: 'Alanları aşağıdan manuel olarak doldurmaya devam edebilirsiniz.',
+    amountsUnchecked: 'Kalemlerin toplamı fatura tutarını tutmuyor. Lütfen göndermeden önce tutarları kontrol edin.',
+    handwrittenCheck: 'El yazısı fatura: Lütfen göndermeden önce her alanı fotoğrafla karşılaştırın.',
+    checkEspecially: 'Özellikle kontrol edin:',
     submitted: 'Gönderildi',
     waitingOnApproval: ' — {name} onayını bekliyor',
     submittedForYou: '{name} tarafından gönderildi. Ayrıntıları inceleyin ve aşağıdan onaylayın veya reddedin.',

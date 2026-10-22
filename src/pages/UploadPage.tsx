@@ -11,6 +11,7 @@ export function UploadPage() {
   const [status, setStatus] = useState<'idle' | 'uploading' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [handwritten, setHandwritten] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const preview = useMemo(() => {
@@ -65,7 +66,7 @@ export function UploadPage() {
     setError(null);
 
     try {
-      const response = await uploadReceipt({ file });
+      const response = await uploadReceipt({ file, handwritten });
       if (response.data) {
         navigate(`/expenses/${response.data.id}`, { state: { justUploaded: true } });
       } else {
@@ -186,6 +187,16 @@ export function UploadPage() {
           </svg>
           <span>{error}</span>
         </div>
+      )}
+
+      {file && (
+        <label className="checkbox-field">
+          <input type="checkbox" checked={handwritten} onChange={(e) => setHandwritten(e.target.checked)} />
+          <span>
+            {t('upload.handwritten')}
+            <small>{t('upload.handwrittenHint')}</small>
+          </span>
+        </label>
       )}
 
       {file && (
