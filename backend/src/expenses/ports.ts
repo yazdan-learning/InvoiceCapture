@@ -1,3 +1,5 @@
+import { CountryProfile } from '../countries/country-profile';
+
 // Ports for the two things v1 already knows will be swapped later:
 // where extraction happens (n8n today), and where files land (local disk today, S3 later).
 // Everything else in this feature stays plain layering — see backend/README.md.
@@ -47,8 +49,10 @@ export type ExtractionResult = {
 };
 
 export type ExtractOptions = {
-  /** The user ticked "handwritten": read from the photo with the vision model. */
+  /** The user ticked "handwritten": read from the photo with the vision model (where the country supports it). */
   handwritten?: boolean;
+  /** The organization's country: its prompt rules, calendar and currency units. International when not given. */
+  country?: CountryProfile;
 };
 
 export interface InvoiceExtractor {

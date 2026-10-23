@@ -192,6 +192,10 @@ const tr: Translations = {
     loadFailed: 'Ayarlar yüklenemedi',
     saveFailed: 'Ayarlar kaydedilemedi',
     saved: 'Ayarlar kaydedildi.',
+    countrySection: 'Ülke',
+    country: 'Ülke',
+    countryHint:
+      'Tarihlerin gösterildiği takvimi, ek para birimlerini (İran için IRR), faturaların nasıl okunduğunu ve yükleme sayfasında "El yazısı fatura" seçeneğinin sunulup sunulmadığını belirler. Değiştirildiğinde o ülkenin varsayılan para birimi önerilir.',
     currencySection: 'Para Birimi',
     defaultCurrency: 'Varsayılan para birimi',
     currencyHint:

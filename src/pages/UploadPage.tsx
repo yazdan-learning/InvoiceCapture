@@ -2,10 +2,12 @@ import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { uploadReceipt } from '../api';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useCountry } from '../country/CountryContext';
 
 export function UploadPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { country } = useCountry();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'error'>('idle');
@@ -66,7 +68,7 @@ export function UploadPage() {
     setError(null);
 
     try {
-      const response = await uploadReceipt({ file, handwritten });
+      const response = await uploadReceipt({ file, handwritten: handwritten && country.features.handwrittenInvoices });
       if (response.data) {
         navigate(`/expenses/${response.data.id}`, { state: { justUploaded: true } });
       } else {
@@ -189,7 +191,8 @@ export function UploadPage() {
         </div>
       )}
 
-      {file && (
+      {/* Only where handwritten invoices are common (the country profile says so). */}
+      {file && country.features.handwrittenInvoices && (
         <label className="checkbox-field">
           <input type="checkbox" checked={handwritten} onChange={(e) => setHandwritten(e.target.checked)} />
           <span>

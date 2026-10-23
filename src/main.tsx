@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthProvider } from './auth/AuthContext';
 import { LanguageProvider } from './i18n/LanguageContext';
+import { CountryProvider } from './country/CountryContext';
 import './App.css';
 
 const root = document.getElementById('root');
@@ -14,7 +15,9 @@ if (root) {
       <BrowserRouter>
         <AuthProvider>
           <LanguageProvider>
-            <App />
+            <CountryProvider>
+              <App />
+            </CountryProvider>
           </LanguageProvider>
         </AuthProvider>
       </BrowserRouter>

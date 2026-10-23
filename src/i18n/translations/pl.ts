@@ -190,6 +190,10 @@ const pl: Translations = {
     loadFailed: 'Nie udało się załadować ustawień',
     saveFailed: 'Nie udało się zapisać ustawień',
     saved: 'Ustawienia zapisane.',
+    countrySection: 'Kraj',
+    country: 'Kraj',
+    countryHint:
+      'Określa kalendarz dat, dodatkowe waluty (IRR dla Iranu), sposób odczytu faktur i to, czy przy przesyłaniu dostępna jest opcja „Faktura odręczna”. Zmiana kraju proponuje też jego domyślną walutę.',
     currencySection: 'Waluta',
     defaultCurrency: 'Domyślna waluta',
     currencyHint:

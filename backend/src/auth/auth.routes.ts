@@ -19,7 +19,8 @@ authRouter.post('/login', validate(loginSchema, 'body'), asyncHandler(authContro
 
 authRouter.get('/me', requireAuth, asyncHandler(authController.me));
 
-authRouter.get('/users', requireAuth, asyncHandler(authController.listUsers));
+// Admin-only like the rest of user management: the list has every colleague's email and role.
+authRouter.get('/users', requireAuth, requireRole('ADMIN'), asyncHandler(authController.listUsers));
 
 authRouter.post(
   '/users',

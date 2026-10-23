@@ -2,9 +2,9 @@ import { randomUUID } from 'crypto';
 import { ExpenseStatus, Prisma } from '@prisma/client';
 import { NotFoundError, BadRequestError } from '../shared/errors';
 import { toCsv } from '../shared/csv';
-import { SUPPORTED_CURRENCIES } from '../shared/currencies';
 import { SUPPORTED_LANGUAGES } from '../shared/languages';
-import { expensesRepository, LineItemInput } from './expenses.repository';
+import { currenciesFor, getCountryProfile } from '../countries/registry';
+import { expensesRepository as prismaExpensesRepository, ExpensesRepository, LineItemInput } from './expenses.repository';
 import {
   ApproverResolver,
   CurrencyConverter,
@@ -44,6 +44,8 @@ type Deps = {
   approverResolver: ApproverResolver;
   distanceCalculator: DistanceCalculator;
   currencyConverter: CurrencyConverter;
+  /** Prisma by default; tests pass a fake. */
+  expensesRepository?: ExpensesRepository;
 };
 
 // mileageDistanceKm always stores the one-way distance; the round-trip factor
@@ -58,7 +60,8 @@ export function createExpensesService({
   fileStorage,
   approverResolver,
   distanceCalculator,
-  currencyConverter
+  currencyConverter,
+  expensesRepository = prismaExpensesRepository
 }: Deps) {
   // The calculator throws plain Errors (not set up, no route found, etc.) —
   // rethrow as BadRequestError so the real message reaches the client instead
@@ -72,14 +75,18 @@ export function createExpensesService({
   }
 
   return {
-    async uploadAndExtract(organizationId: string, userId: string, file: UploadedFile, options: ExtractOptions = {}) {
+    async uploadAndExtract(organizationId: string, userId: string, file: UploadedFile, options: Omit<ExtractOptions, 'country'> = {}) {
       const expenseId = randomUUID();
       const relativePath = await fileStorage.save({ organizationId, expenseId, file });
+
+      // The country decides the prompt rules, the calendar dates are read in,
+      // and whether "handwritten" applies at all.
+      const country = getCountryProfile(await expensesRepository.getOrganizationCountry(organizationId));
 
       let extraction: Awaited<ReturnType<InvoiceExtractor['extract']>> | null = null;
       let errorMessage: string | null = null;
       try {
-        extraction = await extractor.extract(file, options);
+        extraction = await extractor.extract(file, { ...options, country });
       } catch (err) {
         errorMessage = err instanceof Error ? err.message : 'Extraction failed';
       }
@@ -239,10 +246,11 @@ export function createExpensesService({
     // as getMileageRate: it's org policy someone needs to know to fill out a
     // form, not a setting they can change from here.
     async getSupportedCurrencies(organizationId: string) {
-      return {
-        defaultCurrency: await expensesRepository.getOrganizationDefaultCurrency(organizationId),
-        supportedCurrencies: SUPPORTED_CURRENCIES
-      };
+      const [defaultCurrency, country] = await Promise.all([
+        expensesRepository.getOrganizationDefaultCurrency(organizationId),
+        expensesRepository.getOrganizationCountry(organizationId)
+      ]);
+      return { defaultCurrency, supportedCurrencies: currenciesFor(getCountryProfile(country)) };
     },
 
     // Same reasoning again — the UI language is org policy anyone logged in

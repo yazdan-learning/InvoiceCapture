@@ -192,6 +192,10 @@ const de: Translations = {
     loadFailed: 'Einstellungen konnten nicht geladen werden',
     saveFailed: 'Einstellungen konnten nicht gespeichert werden',
     saved: 'Einstellungen gespeichert.',
+    countrySection: 'Land',
+    country: 'Land',
+    countryHint:
+      'Bestimmt den Kalender für Datumsangaben, zusätzliche Währungen (IRR für Iran), wie Belege gelesen werden und ob beim Hochladen „Handschriftliche Rechnung“ angeboten wird. Beim Wechsel wird die Standardwährung des Landes vorgeschlagen.',
     currencySection: 'Währung',
     defaultCurrency: 'Standardwährung',
     currencyHint:

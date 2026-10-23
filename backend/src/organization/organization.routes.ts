@@ -18,3 +18,10 @@ organizationRouter.patch(
   validate(updateOrganizationSettingsSchema, 'body'),
   asyncHandler(organizationController.updateSettings)
 );
+
+// The organization's country profile, for every signed-in user (mounted
+// separately in app.ts, without the ADMIN check): it decides the calendar and
+// whether the upload page offers "handwritten".
+export const countryRouter = Router();
+
+countryRouter.get('/', asyncHandler(organizationController.getCountry));

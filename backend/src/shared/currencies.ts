@@ -1,6 +1,6 @@
-// Exactly what the Frankfurter/ECB feed supports (confirmed against
-// https://api.frankfurter.app/currencies) — the bound here is what's actually
-// convertible, not an arbitrary editorial list.
+// Every country's currency list starts from this one (a country profile can
+// add its own, e.g. IRR for Iran — see countries/registry.ts). All of them are
+// convertible with the Frankfurter API (see frankfurter-currency-converter.ts).
 export const SUPPORTED_CURRENCIES = [
   'AUD',
   'BRL',

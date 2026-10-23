@@ -1,12 +1,14 @@
-import { persianWordsToNumber, restoreDroppedZeros } from '../../ai/handwritten-fixes';
+import { restoreDroppedZeros } from '../../ai/handwritten-fixes';
 import { checkInvoice } from '../../ai/invoice-checks';
-import { todayJalali } from '../../ai/jalali';
 import { LlmClient } from '../../ai/gateway/llm';
 import { OcrClient, OcrFile } from '../../ai/gateway/ocr';
 import { pageImage } from '../../ai/page-image';
 import { EXTRACT_INVOICE, invoiceHandwrittenPrompt, invoiceRereadPrompt, invoiceStructurePrompt } from '../../ai/prompts/invoice-structure';
-import { num, parseJsonObject, toInvoiceData, tomanToRial } from '../../ai/replies';
+import { applyCurrencyUnits, num, parseJsonObject, toInvoiceData } from '../../ai/replies';
 import { retryStep } from '../../ai/retry';
+import { Calendar, getCalendar } from '../../countries/calendars';
+import { HandwritingRules, InvoiceRules } from '../../countries/country-profile';
+import { international } from '../../countries/international';
 import { ExtractedInvoiceData, ExtractionResult, ExtractOptions, InvoiceExtractor, UploadedFile } from '../ports';
 
 /** Kept as the expense's errorMessage when the reading is used despite failed checks. */
@@ -23,13 +25,17 @@ const REVIEW_FIELDS = ['vendorName', 'vendorAddress', 'vendorTaxId', 'customerNa
 
 type Reading = { structured: Record<string, unknown>; data: ExtractedInvoiceData };
 
+/** What one extraction needs from the organization's country profile. */
+type Locale = { rules: InvoiceRules; calendar: Calendar };
+
 // Extraction in-process (the receipt scanner from Nestmate): OCR → structuring
 // prompt → sanity checks; if the numbers don't add up, one re-read with the
 // photo next to the OCR text. Unlike Nestmate, a reading that still doesn't
 // add up is kept (with a warning) — the user reviews every field before
-// submitting anyway. Handwritten invoices are read from the photo by the
-// vision model instead (OCR loses handwritten digits), cross-checked against
-// the OCR reading. Never throws: failures come back as { success: false }.
+// submitting anyway. Handwritten invoices (only in countries whose profile has
+// handwriting rules) are read from the photo by the vision model instead (OCR
+// loses handwritten digits), cross-checked against the OCR reading. Never
+// throws: failures come back as { success: false }.
 export class DirectInvoiceExtractor implements InvoiceExtractor {
   constructor(
     private readonly ocr: OcrClient,
@@ -39,21 +45,23 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
   ) {}
 
   async extract(upload: UploadedFile, options: ExtractOptions = {}): Promise<ExtractionResult> {
-    const result = await this.extractAny(upload, options);
+    const country = options.country ?? international;
+    const locale: Locale = { rules: country.invoice, calendar: getCalendar(country.calendar) };
+    const result = await this.extractAny(upload, locale, options.handwritten ? country.invoice.handwriting : undefined);
     // Last, so every check above works in the units printed on the invoice.
-    return result.data ? { ...result, data: tomanToRial(result.data) } : result;
+    return result.data ? { ...result, data: applyCurrencyUnits(result.data, locale.rules.currencyUnits) } : result;
   }
 
-  private async extractAny(upload: UploadedFile, options: ExtractOptions): Promise<ExtractionResult> {
+  private async extractAny(upload: UploadedFile, locale: Locale, handwriting: HandwritingRules | undefined): Promise<ExtractionResult> {
     const file: OcrFile = { buffer: upload.buffer, filename: upload.originalname, contentType: upload.mimetype };
     const image = pageImage(file);
     try {
-      if (!options.handwritten) return await this.extractPrinted(file, image);
+      if (!handwriting) return await this.extractPrinted(file, image, locale);
 
-      const handwritten = image ? await this.extractHandwritten(file, image).catch((err: Error) => err) : null;
+      const handwritten = image ? await this.extractHandwritten(file, image, locale, handwriting).catch((err: Error) => err) : null;
       if (handwritten && !(handwritten instanceof Error)) return handwritten;
       // No photo to look at, or the vision model is down: the OCR reading is still better than nothing.
-      const printed = await this.extractPrinted(file, image);
+      const printed = await this.extractPrinted(file, image, locale);
       return {
         ...printed,
         // OCR misreads handwritten digits, so its numbers are never trusted here.
@@ -67,8 +75,8 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
     }
   }
 
-  private async extractPrinted(file: OcrFile, image: string | null): Promise<ExtractionResult> {
-    const { ocrText, first } = await this.ocrReading(file);
+  private async extractPrinted(file: OcrFile, image: string | null, locale: Locale): Promise<ExtractionResult> {
+    const { ocrText, first } = await this.ocrReading(file, locale);
     const firstCheck = checkInvoice(first.data);
     if (!firstCheck.problems.length) {
       return { success: true, data: first.data, raw: { provider: 'direct', data: first.structured, ocrText } };
@@ -76,7 +84,8 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
 
     // The photo — also the one inside a scanner-app PDF — lets the model follow the lines; a text PDF just gets the hints.
     const problems = firstCheck.problems.map((p) => p.message);
-    const second = await this.read(this.llm, invoiceRereadPrompt(ocrText, problems, Boolean(image)), image ?? undefined).catch(() => null);
+    const prompt = invoiceRereadPrompt(ocrText, problems, Boolean(image), locale.rules);
+    const second = await this.read(this.llm, prompt, locale.calendar, image ?? undefined).catch(() => null);
     if (second && second.data.items.length && !checkInvoice(second.data).problems.length) {
       return { success: true, data: second.data, raw: { provider: 'direct', data: second.structured, first: first.structured, ocrText } };
     }
@@ -94,10 +103,10 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
    * handwritten total's digits but drops its zeros, and gets dates wrong).
    * Every field that disagrees or fails a check is named in the warning.
    */
-  private async extractHandwritten(file: OcrFile, image: string): Promise<ExtractionResult> {
+  private async extractHandwritten(file: OcrFile, image: string, locale: Locale, handwriting: HandwritingRules): Promise<ExtractionResult> {
     const [vision, ocr] = await Promise.all([
-      this.read(this.vision, invoiceHandwrittenPrompt(todayJalali()), image),
-      this.ocrReading(file).catch(() => null)
+      this.read(this.vision, invoiceHandwrittenPrompt({ ...locale.rules, handwriting }, locale.calendar.today()), locale.calendar, image),
+      this.ocrReading(file, locale).catch(() => null)
     ]);
     const { structured } = vision;
     let data = vision.data;
@@ -108,7 +117,7 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
     // The total in words, parsed here (the model's own value follows its misreadings), is the reference
     // amount: lines that only add up to it with zeros restored get them back.
     const words = typeof structured.totalInWords === 'string' ? structured.totalInWords : null;
-    const inWords = persianWordsToNumber(words) ?? num(structured.totalInWordsValue);
+    const inWords = handwriting.wordsToNumber(words) ?? num(structured.totalInWordsValue);
     const reference = inWords ?? data.totalAmount;
     const restored = reference !== null ? restoreDroppedZeros(data.items, reference) : null;
     if (restored) data = { ...data, items: restored };
@@ -118,7 +127,7 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
       else uncertain.add('totalAmount');
     }
     // The unit written in words beats the model's guess.
-    const unit = words?.includes('تومان') ? 'IRT' : words?.includes('ریال') ? 'IRR' : null;
+    const unit = Object.entries(handwriting.currencyWords).find(([word]) => words?.includes(word))?.[1];
     if (unit) data = { ...data, currency: unit };
     if (checkInvoice(data).problems.length) uncertain.add('items');
     if (!isRecent(data.invoiceDate)) uncertain.add('invoiceDate');
@@ -137,16 +146,16 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
     };
   }
 
-  private async ocrReading(file: OcrFile): Promise<{ ocrText: string; first: Reading }> {
+  private async ocrReading(file: OcrFile, locale: Locale): Promise<{ ocrText: string; first: Reading }> {
     const ocrText = await retryStep(() => this.ocr.extractText(file));
     if (!ocrText.trim()) throw new Error('No text found on the document - please upload a clearer photo or PDF');
-    return { ocrText, first: await this.read(this.llm, invoiceStructurePrompt(ocrText)) };
+    return { ocrText, first: await this.read(this.llm, invoiceStructurePrompt(ocrText, locale.rules), locale.calendar) };
   }
 
-  private async read(llm: LlmClient, prompt: string, image?: string): Promise<Reading> {
+  private async read(llm: LlmClient, prompt: string, calendar: Calendar, image?: string): Promise<Reading> {
     const answer = await retryStep(() => llm.complete({ ...EXTRACT_INVOICE, prompt, image }));
     const structured = parseJsonObject(answer);
-    return { structured, data: toInvoiceData(structured) };
+    return { structured, data: toInvoiceData(structured, calendar) };
   }
 }
 

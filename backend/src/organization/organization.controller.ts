@@ -11,6 +11,11 @@ export function createOrganizationController(organizationService: OrganizationSe
     async updateSettings(req: Request, res: Response) {
       const settings = await organizationService.updateSettings(req.actor.organizationId, req.body);
       res.json(settings);
+    },
+
+    async getCountry(req: Request, res: Response) {
+      const country = await organizationService.getCountry(req.actor.organizationId);
+      res.json(country);
     }
   };
 }

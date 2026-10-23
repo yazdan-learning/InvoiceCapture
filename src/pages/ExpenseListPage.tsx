@@ -4,6 +4,7 @@ import { downloadExpensesExport, listExpenses } from '../api';
 import { Expense, ExpenseStatus } from '../types';
 import { StatusPill } from '../components/StatusPill';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useCountry } from '../country/CountryContext';
 
 const STATUS_TABS: { key: string; value: ExpenseStatus | 'ALL' }[] = [
   { key: 'status.all', value: 'ALL' },
@@ -26,11 +27,6 @@ function formatAmount(amount: string | null, currency: string | null) {
   return currency ? `${formatted} ${currency}` : formatted;
 }
 
-function formatDate(date: string | null) {
-  if (!date) return '—';
-  return new Date(date).toLocaleDateString();
-}
-
 function expenseLabel(expense: Expense, t: (key: string) => string): string {
   if (expense.expenseType === 'MILEAGE') {
     return expense.mileageFrom && expense.mileageTo
@@ -47,6 +43,7 @@ function expenseDate(expense: Expense): string | null {
 export function ExpenseListPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { formatDate } = useCountry();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialStatus = searchParams.get('status');
   const [expenses, setExpenses] = useState<Expense[]>([]);

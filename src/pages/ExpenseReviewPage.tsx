@@ -20,6 +20,8 @@ import { Select } from '../components/Select';
 import { isGoogleMapsConfigured } from '../lib/googleMaps';
 import { useAuth } from '../auth/AuthContext';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useCountry } from '../country/CountryContext';
+import { DateInput } from '../components/DateInput';
 import { useIsDesktop } from '../hooks/useIsDesktop';
 
 type FormState = {
@@ -116,17 +118,13 @@ function handwrittenFields(errorMessage: string | null): string[] | null {
   return listed ? listed.split(',').map((f) => f.trim()).filter(Boolean) : [];
 }
 
-function formatDateTime(value: string | null): string {
-  if (!value) return '';
-  return new Date(value).toLocaleString();
-}
-
 export function ExpenseReviewPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
   const { t } = useTranslation();
+  const { formatDateTime } = useCountry();
   const isDesktop = useIsDesktop();
   const justUploaded = Boolean((location.state as { justUploaded?: boolean } | null)?.justUploaded);
 
@@ -582,11 +580,7 @@ export function ExpenseReviewPage() {
                 <div className="form-grid">
                   <label className="form-field">
                     <span>{t('common.date')}</span>
-                    <input
-                      type="date"
-                      value={form.mileageDate}
-                      onChange={(e) => updateField('mileageDate', e.target.value)}
-                    />
+                    <DateInput value={form.mileageDate} onChange={(value) => updateField('mileageDate', value)} />
                   </label>
                   <label className="form-field">
                     <span>{t('common.from')}</span>
@@ -741,15 +735,11 @@ export function ExpenseReviewPage() {
                   </label>
                   <label className="form-field">
                     <span>{t('review.invoiceDate')}</span>
-                    <input
-                      type="date"
-                      value={form.invoiceDate}
-                      onChange={(e) => updateField('invoiceDate', e.target.value)}
-                    />
+                    <DateInput value={form.invoiceDate} onChange={(value) => updateField('invoiceDate', value)} />
                   </label>
                   <label className="form-field">
                     <span>{t('review.dueDate')}</span>
-                    <input type="date" value={form.dueDate} onChange={(e) => updateField('dueDate', e.target.value)} />
+                    <DateInput value={form.dueDate} onChange={(value) => updateField('dueDate', value)} />
                   </label>
                 </div>
               </div>

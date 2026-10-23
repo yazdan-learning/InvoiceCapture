@@ -358,25 +358,52 @@ export async function deactivateUser(id: string, apiBaseUrl = defaultBaseUrl): P
   return throwIfError(response);
 }
 
+/** A country the admin can pick, with the currencies it offers (IRR only for Iran). */
+export type CountryOption = {
+  id: string;
+  name: string;
+  defaultCurrency: string;
+  currencies: string[];
+};
+
 export type OrganizationSettings = {
   mileageRatePerKm: number;
   defaultCurrency: string;
   defaultLanguage: string;
+  country: string;
   supportedCurrencies: string[];
   supportedLanguages: string[];
+  supportedCountries: CountryOption[];
 };
 
 export type UpdateOrganizationSettingsPayload = Partial<{
   mileageRatePerKm: number;
   defaultCurrency: string;
   defaultLanguage: string;
+  country: string;
 }>;
 
 export type UpdatedOrganizationSettings = {
   mileageRatePerKm: number;
   defaultCurrency: string;
   defaultLanguage: string;
+  country: string;
 };
+
+// What the UI adapts to for the organization's country (see backend/src/countries).
+export type CountryProfile = {
+  id: string;
+  name: string;
+  calendar: 'gregorian' | 'persian';
+  direction: 'ltr' | 'rtl';
+  features: { handwrittenInvoices: boolean };
+};
+
+// Readable by every signed-in user, unlike the settings above.
+export async function getCountryProfile(apiBaseUrl = defaultBaseUrl): Promise<CountryProfile> {
+  const response = await fetch(apiUrl('/api/country', apiBaseUrl), { headers: authHeaders() });
+  return parseJsonOrThrow(response);
+}
 
 export async function getOrganizationSettings(apiBaseUrl = defaultBaseUrl): Promise<OrganizationSettings> {
   const response = await fetch(apiUrl('/api/organization/settings', apiBaseUrl), { headers: authHeaders() });

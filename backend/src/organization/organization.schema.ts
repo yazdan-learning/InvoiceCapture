@@ -1,17 +1,17 @@
 import { z } from 'zod';
-import { SUPPORTED_CURRENCIES } from '../shared/currencies';
+import { COUNTRY_IDS } from '../countries/country-profile';
 import { SUPPORTED_LANGUAGES } from '../shared/languages';
 
 export const updateOrganizationSettingsSchema = z
   .object({
     mileageRatePerKm: z.number().positive().optional(),
-    defaultCurrency: z.enum(SUPPORTED_CURRENCIES).optional(),
-    defaultLanguage: z.enum(SUPPORTED_LANGUAGES).optional()
+    // Which codes are allowed depends on the country (IRR only for Iran) — checked in the service.
+    defaultCurrency: z.string().regex(/^[A-Z]{3}$/).optional(),
+    defaultLanguage: z.enum(SUPPORTED_LANGUAGES).optional(),
+    country: z.enum(COUNTRY_IDS).optional()
   })
-  .refine(
-    (data) =>
-      data.mileageRatePerKm !== undefined || data.defaultCurrency !== undefined || data.defaultLanguage !== undefined,
-    { message: 'Provide at least one setting to update' }
-  );
+  .refine((data) => Object.values(data).some((value) => value !== undefined), {
+    message: 'Provide at least one setting to update'
+  });
 
 export type UpdateOrganizationSettingsInput = z.infer<typeof updateOrganizationSettingsSchema>;

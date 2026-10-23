@@ -204,6 +204,10 @@ const en = {
     loadFailed: 'Failed to load settings',
     saveFailed: 'Failed to save settings',
     saved: 'Settings saved.',
+    countrySection: 'Country',
+    country: 'Country',
+    countryHint:
+      'Decides the calendar dates are shown in, the extra currencies on offer (IRR for Iran), how invoices are read and whether the upload page offers "Handwritten invoice". Switching it also suggests that country\'s default currency.',
     currencySection: 'Currency',
     defaultCurrency: 'Default currency',
     currencyHint:

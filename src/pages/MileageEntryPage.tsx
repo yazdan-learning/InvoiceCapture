@@ -7,6 +7,7 @@ import { RouteMap } from '../components/RouteMap';
 import { Select } from '../components/Select';
 import { isGoogleMapsConfigured } from '../lib/googleMaps';
 import { useTranslation } from '../i18n/LanguageContext';
+import { DateInput } from '../components/DateInput';
 import { useIsDesktop } from '../hooks/useIsDesktop';
 
 function todayInputValue(): string {
@@ -137,7 +138,7 @@ export function MileageEntryPage() {
           <div className="form-grid">
             <label className="form-field">
               <span>{t('common.date')}</span>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <DateInput value={date} onChange={setDate} />
             </label>
             <label className="form-field">
               <span>{t('common.from')}</span>

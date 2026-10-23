@@ -4,6 +4,7 @@ import { getApprovalQueue } from '../api';
 import { Expense } from '../types';
 import { StatusPill } from '../components/StatusPill';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useCountry } from '../country/CountryContext';
 
 function formatAmount(amount: string | null, currency: string | null) {
   if (!amount) return '—';
@@ -30,6 +31,7 @@ function expenseDate(expense: Expense): string | null {
 export function ApprovalQueuePage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { formatDate } = useCountry();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +95,7 @@ export function ApprovalQueuePage() {
                       </span>
                     </td>
                     <td>{expense.expenseType === 'MILEAGE' ? '—' : expense.invoiceNumber || '—'}</td>
-                    <td>{expenseDate(expense) ? new Date(expenseDate(expense)!).toLocaleDateString() : '—'}</td>
+                    <td>{formatDate(expenseDate(expense))}</td>
                     <td className="align-right amount-cell">{formatAmount(expense.totalAmount, expense.currency)}</td>
                     <td>
                       <StatusPill status={expense.status} />
@@ -114,7 +116,7 @@ export function ApprovalQueuePage() {
                 <div className="invoice-card-amount">{formatAmount(expense.totalAmount, expense.currency)}</div>
                 <div className="invoice-card-meta">
                   <span>{t('dashboard.submittedBy', { name: expense.uploader.name })}</span>
-                  <span>{expenseDate(expense) ? new Date(expenseDate(expense)!).toLocaleDateString() : '—'}</span>
+                  <span>{formatDate(expenseDate(expense))}</span>
                 </div>
               </div>
             ))}

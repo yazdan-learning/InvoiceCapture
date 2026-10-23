@@ -1,10 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { getOrganizationSettings, updateOrganizationSettings } from '../api';
+import { CountryOption, getOrganizationSettings, updateOrganizationSettings } from '../api';
+import { useCountry } from '../country/CountryContext';
 import { useTranslation, SUPPORTED_LANGUAGES, LANGUAGE_LABELS, Language } from '../i18n/LanguageContext';
 import { Select } from '../components/Select';
 
 export function AdminSettingsPage() {
   const { t } = useTranslation();
+  const { reload: reloadCountry } = useCountry();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -12,6 +14,8 @@ export function AdminSettingsPage() {
   const [defaultCurrency, setDefaultCurrency] = useState('');
   const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
   const [defaultLanguage, setDefaultLanguage] = useState<Language>('en');
+  const [country, setCountry] = useState('INTL');
+  const [countries, setCountries] = useState<CountryOption[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -21,11 +25,22 @@ export function AdminSettingsPage() {
         setDefaultCurrency(settings.defaultCurrency);
         setSupportedCurrencies(settings.supportedCurrencies);
         setDefaultLanguage(settings.defaultLanguage as Language);
+        setCountry(settings.country);
+        setCountries(settings.supportedCountries);
       })
       .catch((err) => setError(err instanceof Error ? err.message : t('adminSettings.loadFailed')))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The currency list follows the selected country (IRR only for Iran).
+  const currencyOptions = countries.find((c) => c.id === country)?.currencies ?? supportedCurrencies;
+
+  const handleCountryChange = (id: string) => {
+    setCountry(id);
+    const selected = countries.find((c) => c.id === id);
+    if (selected) setDefaultCurrency(selected.defaultCurrency);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -39,10 +54,12 @@ export function AdminSettingsPage() {
     setError(null);
     setSuccessMessage(null);
     try {
-      const updated = await updateOrganizationSettings({ mileageRatePerKm: rate, defaultCurrency, defaultLanguage });
+      const updated = await updateOrganizationSettings({ mileageRatePerKm: rate, defaultCurrency, defaultLanguage, country });
       setMileageRatePerKm(String(updated.mileageRatePerKm));
       setDefaultCurrency(updated.defaultCurrency);
       setDefaultLanguage(updated.defaultLanguage as Language);
+      setCountry(updated.country);
+      reloadCountry();
       setSuccessMessage(t('adminSettings.saved'));
     } catch (err) {
       setError(err instanceof Error ? err.message : t('adminSettings.saveFailed'));
@@ -74,6 +91,21 @@ export function AdminSettingsPage() {
         <div className="review-form">
           <form className="settings-form" onSubmit={handleSubmit}>
             <div className="form-section">
+              <h3>{t('adminSettings.countrySection')}</h3>
+              <div className="form-grid">
+                <label className="form-field">
+                  <span>{t('adminSettings.country')}</span>
+                  <Select
+                    value={country}
+                    onChange={handleCountryChange}
+                    options={countries.map((c) => ({ value: c.id, label: c.name }))}
+                  />
+                </label>
+              </div>
+              <p className="field-hint">{t('adminSettings.countryHint')}</p>
+            </div>
+
+            <div className="form-section">
               <h3>{t('adminSettings.currencySection')}</h3>
               <div className="form-grid">
                 <label className="form-field">
@@ -81,7 +113,7 @@ export function AdminSettingsPage() {
                   <Select
                     value={defaultCurrency}
                     onChange={setDefaultCurrency}
-                    options={supportedCurrencies.map((code) => ({ value: code, label: code }))}
+                    options={currencyOptions.map((code) => ({ value: code, label: code }))}
                   />
                 </label>
               </div>

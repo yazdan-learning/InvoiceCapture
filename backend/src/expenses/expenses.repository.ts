@@ -198,6 +198,14 @@ export const expensesRepository = {
     return org.defaultCurrency;
   },
 
+  async getOrganizationCountry(organizationId: string): Promise<string> {
+    const org = await prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { country: true }
+    });
+    return org.country;
+  },
+
   async getOrganizationDefaultLanguage(organizationId: string): Promise<string> {
     const org = await prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },
@@ -206,3 +214,5 @@ export const expensesRepository = {
     return org.defaultLanguage;
   }
 };
+
+export type ExpensesRepository = typeof expensesRepository;

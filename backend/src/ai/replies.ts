@@ -1,5 +1,6 @@
 import { ExtractedInvoiceData } from '../expenses/ports';
-import { jalaliToIso } from './jalali';
+import { Calendar } from '../countries/calendars';
+import { CurrencyUnit } from '../countries/country-profile';
 
 // Model output is untrusted: parsed defensively and every field re-typed here.
 
@@ -27,38 +28,39 @@ export const num = (v: unknown) => {
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
 };
 const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
-// Gregorian as is; a Shamsi date (Persian invoices) is converted here, not by the model.
-const date = (v: unknown) => {
+/** A date as printed (in the country's calendar) → "YYYY-MM-DD" Gregorian, converted here, not by the model. */
+const date = (v: unknown, calendar: Calendar) => {
   const s = text(v) && westernDigits(text(v)!);
-  if (!s) return null;
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) && Number(s.slice(0, 4)) >= 1900 ? s : jalaliToIso(s);
+  return s ? calendar.toIsoDate(s) : null;
 };
 
 /**
- * Toman has no currency code: a Toman invoice (read as "IRT") is stored as IRR,
- * 1 Toman = 10 Rial, with the printed Toman total kept in the notes.
+ * Units without a currency code (a Toman invoice is read as "IRT") are stored
+ * as the real currency they stand for, with the printed total kept in the notes.
  */
-export function tomanToRial(data: ExtractedInvoiceData): ExtractedInvoiceData {
-  if (!/^(IRT|TOMAN|تومان)$/i.test(data.currency ?? '')) return data;
-  const x10 = (v: number | null | undefined) => (typeof v === 'number' ? v * 10 : null);
+export function applyCurrencyUnits(data: ExtractedInvoiceData, units: CurrencyUnit[]): ExtractedInvoiceData {
+  const currency = data.currency?.toUpperCase() ?? '';
+  const unit = units.find((u) => u.code === currency || u.aliases.includes(currency));
+  if (!unit) return data;
+  const scale = (v: number | null | undefined) => (typeof v === 'number' ? v * unit.factor : null);
   return {
     ...data,
-    items: data.items.map((item) => ({ ...item, unitPrice: x10(item.unitPrice), totalPrice: x10(item.totalPrice) })),
-    subtotal: x10(data.subtotal),
-    discount: x10(data.discount),
-    taxAmount: x10(data.taxAmount),
-    totalAmount: x10(data.totalAmount),
-    currency: 'IRR',
-    notes: [data.notes, `Converted from Toman (x10)${data.totalAmount !== null ? `: invoice total ${data.totalAmount.toLocaleString('en')} Toman` : ''}`].filter(Boolean).join(' - ')
+    items: data.items.map((item) => ({ ...item, unitPrice: scale(item.unitPrice), totalPrice: scale(item.totalPrice) })),
+    subtotal: scale(data.subtotal),
+    discount: scale(data.discount),
+    taxAmount: scale(data.taxAmount),
+    totalAmount: scale(data.totalAmount),
+    currency: unit.storeAs,
+    notes: [data.notes, `Converted from ${unit.name} (x${unit.factor})${data.totalAmount !== null ? `: invoice total ${data.totalAmount.toLocaleString('en')} ${unit.name}` : ''}`].filter(Boolean).join(' - ')
   };
 }
 
-export function toInvoiceData(data: Record<string, unknown>): ExtractedInvoiceData {
+export function toInvoiceData(data: Record<string, unknown>, calendar: Calendar): ExtractedInvoiceData {
   const items = Array.isArray(data.items) ? data.items : [];
   return {
     invoiceNumber: text(data.invoiceNumber),
-    invoiceDate: date(data.invoiceDate),
-    dueDate: date(data.dueDate),
+    invoiceDate: date(data.invoiceDate, calendar),
+    dueDate: date(data.dueDate, calendar),
     vendorName: text(data.vendorName),
     vendorAddress: text(data.vendorAddress),
     vendorTaxId: text(data.vendorTaxId),
