@@ -1,233 +1,102 @@
-# InvoiceCapture - Invoice OCR & AI Extraction App
+# InvoiceCapture
 
-A modern, production-ready React application for capturing and processing invoices using OCR and AI-powered data extraction. Designed for ERP systems, this app allows users to upload invoice images or PDFs and automatically extract structured data.
+Captures invoices and receipts from a photo or PDF, reads them with OCR and an LLM, and lets
+a person check the result before it goes anywhere. One codebase serves two uses, switched on
+per organization (Settings → Modules):
 
-## Features
+- **Expenses** — employees capture receipts and mileage, their manager approves or rejects,
+  the company reimburses. Rydoo-style.
+- **Purchase invoices** — the accountant captures supplier invoices, checks them, and sends
+  them to the company's accounting system. No approval step, no payment tracking (that lives
+  in the accounting system).
+- **Raw-material pricing** (proof of concept) — raw materials as named in the company's ERP
+  (often Persian) are matched by AI to a price-index category; their prices are recalculated
+  from the index and the exchange rate, and a person approves each new price.
 
-- 📸 **Multiple Upload Methods**
-  - Drag & drop interface
-  - Click to browse files
-  - Mobile camera capture support
-  - Supports JPEG, PNG, WebP images and PDF files
+An organization can use any combination of the modules.
 
-- 🤖 **AI-Powered Extraction**
-  - Mistral OCR for text extraction
-  - Groq AI for structured data parsing
-  - Automatic field extraction (invoice number, date, vendor, items, totals, etc.)
+## Repository layout
 
-- 🎨 **Professional UI**
-  - Clean, modern design optimized for ERP systems
-  - Responsive layout (desktop, tablet, mobile)
-  - Real-time processing status indicators
-  - Success summary with extracted invoice data
+| Folder | What it is |
+|---|---|
+| `src/` | React 18 + TypeScript + Vite frontend |
+| `backend/` | Express + TypeScript + Prisma/PostgreSQL API — see [backend/README.md](backend/README.md) |
+| `mock-backend.js` | Old mock server (`npm run mock:server`), not needed with the real backend |
 
-- ⚡ **Fast & Efficient**
-  - Built with Vite for optimal performance
-  - TypeScript for type safety
-  - Optimized bundle size
+## Main features
 
-## Prerequisites
+- Upload by drag & drop, file picker or phone camera (JPEG, PNG, WebP, PDF).
+- Extraction in the backend: Mistral OCR + an LLM; handwritten invoices go to a separate
+  vision model.
+- **Country profiles** (per organization): `INTL` (default) and `IR` (Iran — Shamsi
+  calendar and date picker, Rial/Toman, Persian prompts, "handwritten" option on upload).
+- Multi-currency: receipts are converted into the organization's currency at the invoice
+  date's rate; the original amounts are kept. Exchange rates come from the source chosen in
+  Settings → Currency (Frankfurter today; "Free market" is listed but not connected yet).
+- Material matching: the AI that matches raw materials to index categories is chosen in
+  Settings (an LLM, TypeSafe's Jev, or Jev with the LLM as a fallback).
+- Roles: `EMPLOYEE`, `APPROVER`, `ACCOUNTANT` (purchase invoices only), `ADMIN`.
+- **Send to accounting**: per organization, Settings → Accounting system:
+  - `NONE` — sending only marks the invoice as sent.
+  - `ASR` — creates the invoice as a draft in ASR through its partner API (see the
+    backend README).
+- Amounts are shown and typed with thousands separators; line items are shown as a list on
+  mobile.
+- UI languages: English, German, Polish, Turkish.
+- Mileage with optional Google Maps autocomplete and route map.
 
-- **Node.js** 18.x or higher
-- **npm** 9.x or higher
-- **n8n** instance running with the Invoice OCR workflow configured
+## Running locally
 
-## Installation
-
-1. **Clone or navigate to the project directory:**
-   ```bash
-   cd invoice-ocr-app
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Configure environment variables:**
-   
-   Create a `.env` file in the root directory:
-   ```env
-   VITE_API_BASE_URL=http://localhost:5678
-   ```
-   
-   For production, create `.env.production`:
-   ```env
-   VITE_API_BASE_URL=https://your-n8n-server.com
-   ```
-
-## Development
-
-### Start Development Server
+Start the backend first (Postgres in Docker, migrations, seed) — see
+[backend/README.md](backend/README.md#local-setup). Then the frontend:
 
 ```bash
-npm run dev
+npm install
+cp .env.example .env     # VITE_API_BASE_URL=http://localhost:4300
+npm run dev              # http://localhost:5173
 ```
 
-The app will be available at `http://localhost:5173`
+### Frontend environment
 
-### Type Checking
+| Variable | Purpose |
+|---|---|
+| `VITE_API_BASE_URL` | The backend's address |
+| `VITE_GOOGLE_MAPS_API_KEY` | Optional. Places autocomplete and route map on the mileage forms (Maps JavaScript API + Places API). Without it the From/To fields are plain text. Separate from the backend's `GOOGLE_DIRECTIONS_API_KEY`. |
 
-```bash
-npm run lint
-```
+All other keys (OCR, LLM, accounting systems) live in the backend only; the browser never
+calls those services.
 
-### Preview Production Build
-
-```bash
-npm run build
-npm run preview
-```
-
-## Building for Production
-
-### Build the Application
-
-```bash
-npm run build
-```
-
-This creates a `dist` folder with optimized production files.
-
-### Deploy to IIS (Windows Server)
-
-1. Copy the `dist` folder to your Windows Server
-2. Place it in: `C:\inetpub\wwwroot\invoice-ocr-app\dist`
-3. Create `web.config` in the `dist` folder (see Deployment section below)
-4. Configure IIS site/application pointing to the `dist` folder
-5. Install URL Rewrite module for IIS
-
-### Deploy to Other Platforms
-
-The `dist` folder contains static files that can be deployed to:
-- **Nginx**: Copy `dist` to web root, configure routing
-- **Apache**: Copy `dist` to `htdocs`, enable mod_rewrite
-- **Netlify/Vercel**: Connect repository, auto-deploy on push
-- **Docker**: Use nginx image, copy `dist` to `/usr/share/nginx/html`
-
-## Configuration
-
-### API Endpoint
-
-The app connects to an n8n webhook endpoint. Update the API URL:
-
-**Development:**
-```env
-VITE_API_BASE_URL=http://localhost:5678
-```
-
-**Production:**
-```env
-VITE_API_BASE_URL=https://your-n8n-server.com
-```
-
-### Mileage map (optional)
-
-Set `VITE_GOOGLE_MAPS_API_KEY` in `.env` to enable Places autocomplete and a visual
-route map on the mileage entry/review forms. Requires the **Maps JavaScript API**
-and **Places API** enabled on the Google Cloud project the key belongs to. Without
-it, the From/To fields fall back to plain text input and no map renders — nothing
-else in the app depends on this key. This is separate from the backend's
-`GOOGLE_DIRECTIONS_API_KEY` (see `backend/README.md`), which powers the numeric
-distance calculation; the two can be set independently.
-
-### Expected n8n Webhook Format
-
-The app expects a webhook at:
-```
-POST /webhook/invoice-ocr-mistral
-```
-
-**Request:**
-- `multipart/form-data`
-- Field name: `file` (image or PDF)
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Invoice parsed successfully",
-  "timestamp": "2025-01-03T22:21:49.753Z",
-  "data": {
-    "invoiceNumber": "AAA2025000000064",
-    "invoiceDate": "2025-12-16",
-    "vendorName": "Company Name",
-    "items": [...],
-    "totalAmount": 10907.2,
-    "currency": "USD"
-  }
-}
-```
-
-## Project Structure
-
-```
-invoice-ocr-app/
-├── src/
-│   ├── App.tsx          # Main application component
-│   ├── App.css          # Application styles
-│   ├── api.ts           # API client for n8n webhook
-│   ├── types.ts         # TypeScript type definitions
-│   └── main.tsx         # Application entry point
-├── public/              # Static assets
-├── dist/                # Production build output
-├── package.json         # Dependencies and scripts
-├── vite.config.ts       # Vite configuration
-├── tsconfig.json        # TypeScript configuration
-└── README.md           # This file
-```
-
-## Technologies Used
-
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool and dev server
-- **CSS3** - Styling (no CSS framework)
-
-## Browser Support
-
-- Chrome/Edge (latest)
-- Firefox (latest)
-- Safari (latest)
-- Mobile browsers (iOS Safari, Chrome Mobile)
-
-## Troubleshooting
-
-### API Connection Issues
-
-- Verify `VITE_API_BASE_URL` is correct
-- Check CORS settings on n8n server
-- Ensure n8n webhook is active and accessible
-
-### Build Errors
-
-- Clear `node_modules` and reinstall: `rm -rf node_modules && npm install`
-- Check Node.js version: `node --version` (should be 18+)
-
-### IIS Deployment Issues
-
-- Ensure URL Rewrite module is installed
-- Verify `web.config` exists in `dist` folder
-- Check folder permissions for `IIS_IUSRS`
-
-## Development Scripts
+## Scripts
 
 | Command | Description |
-|---------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Build for production |
-| `npm run preview` | Preview production build |
-| `npm run lint` | Type check with TypeScript |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` | Type check + production build into `dist/` |
+| `npm run preview` | Serve the production build |
+| `npm run lint` | Type check |
+| `npm test` | Frontend unit tests (Vitest) |
+
+## Frontend structure
+
+```
+src/
+├── App.tsx            # Routes (/expenses, /invoices, /approvals, /admin/…)
+├── api.ts             # Client for the backend API
+├── pages/             # One file per screen
+├── components/        # Shared UI (AmountInput, DateInput, PersianDatePicker, Select, …)
+├── auth/              # Login state
+├── country/           # Country profile context and date formatting
+├── workspace/         # Enabled modules, navigation, role permissions
+├── i18n/              # LanguageContext + translations (en, de, pl, tr)
+└── lib/               # money formatting, Google Maps loader
+```
+
+## Deployment
+
+`npm run build` produces static files in `dist/`. Serve them from any static host (Nginx,
+IIS with URL Rewrite, Vercel — `vercel.json` is included) with a fallback to `index.html`
+for client-side routes. Build with `VITE_API_BASE_URL` set to the production backend.
 
 ## License
 
-Private - Internal ERP System Component
-
-## Support
-
-For issues or questions, contact your development team.
-
----
-
-**Version:** 0.1.0  
-**Last Updated:** January 2025
+Private.

@@ -4,7 +4,7 @@ import { OrganizationRepository, OrganizationSettings } from '../src/organizatio
 import { BadRequestError } from '../src/shared/errors';
 
 function fakeRepository(settings: Partial<OrganizationSettings> = {}) {
-  const current: OrganizationSettings = { mileageRatePerKm: 0.3, defaultCurrency: 'EUR', defaultLanguage: 'en', country: 'INTL', modules: ['EXPENSES'], accountingConnector: 'NONE', ...settings };
+  const current: OrganizationSettings = { mileageRatePerKm: 0.3, defaultCurrency: 'EUR', defaultLanguage: 'en', country: 'INTL', modules: ['EXPENSES'], accountingConnector: 'NONE', currencyConverter: 'FRANKFURTER', materialMatcher: 'LLM', ...settings };
   return {
     get: vi.fn(async () => current),
     updateSettings: vi.fn(async (_id: string, input: Partial<OrganizationSettings>) => ({ ...current, ...input }))
@@ -42,7 +42,14 @@ describe('organization settings', () => {
   it('gives every user the enabled modules', async () => {
     const service = createOrganizationService(fakeRepository({ modules: ['PURCHASE_INVOICES'] }));
     expect(await service.getModules('org')).toEqual({ modules: ['PURCHASE_INVOICES'] });
-    expect((await service.getSettings('org')).supportedModules.map((m) => m.id)).toEqual(['EXPENSES', 'PURCHASE_INVOICES']);
+    expect((await service.getSettings('org')).supportedModules.map((m) => m.id)).toEqual(['EXPENSES', 'PURCHASE_INVOICES', 'RAW_MATERIAL_PRICING']);
+  });
+
+  it('lists the exchange-rate sources and material matchers to choose from', async () => {
+    const settings = await createOrganizationService(fakeRepository()).getSettings('org');
+    expect(settings.currencyConverter).toBe('FRANKFURTER');
+    expect(settings.supportedCurrencyConverters.map((c) => c.id)).toEqual(['FRANKFURTER', 'FREE_MARKET']);
+    expect(settings.supportedMaterialMatchers.map((m) => m.id)).toEqual(['LLM', 'JEV', 'COMBINED']);
   });
 
   it('gives every user the client profile of the country', async () => {

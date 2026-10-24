@@ -46,6 +46,7 @@ function setup({
     getOrganizationDefaultCurrency: vi.fn(async () => defaultCurrency),
     getOrganizationModules: vi.fn(async () => modules),
     getOrganizationAccountingConnector: vi.fn(async () => 'NONE'),
+    getOrganizationCurrencyConverter: vi.fn(async () => 'FRANKFURTER'),
     findPotentialDuplicate: vi.fn(async () => null),
     findById: vi.fn(async () => stored),
     list: vi.fn(async () => [[], 0]),
@@ -54,12 +55,12 @@ function setup({
   };
   const service = createExpensesService({
     extractor,
-    currencyConverter,
     expensesRepository: repository as unknown as ExpensesRepository,
     fileStorage: { save: vi.fn(async () => 'path'), read: vi.fn(), delete: vi.fn() },
     approverResolver: { getApprover: vi.fn() },
     distanceCalculator: { getDistance: vi.fn() },
-    accountingConnectorFor: () => connector
+    accountingConnectorFor: () => connector,
+    currencyConverterFor: () => currencyConverter
   });
   return { service, extractor, currencyConverter, repository, connector };
 }

@@ -14,7 +14,6 @@ import { LocalDiskFileStorage } from './adapters/local-disk-storage';
 import { S3FileStorage } from './adapters/s3-file-storage';
 import { GoogleDirectionsCalculator } from './adapters/google-directions';
 import { UnconfiguredDistanceCalculator } from './adapters/unconfigured-distance-calculator';
-import { FrankfurterCurrencyConverter } from './adapters/frankfurter-currency-converter';
 import { asyncHandler } from '../shared/asyncHandler';
 import { validate } from '../shared/validate';
 import { FileStorage, InvoiceExtractor } from './ports';
@@ -66,8 +65,7 @@ const expensesService = createExpensesService({
   approverResolver: authService,
   distanceCalculator: env.googleDirectionsApiKey
     ? new GoogleDirectionsCalculator(env.googleDirectionsApiKey)
-    : new UnconfiguredDistanceCalculator(),
-  currencyConverter: new FrankfurterCurrencyConverter()
+    : new UnconfiguredDistanceCalculator()
 });
 const expensesController = createExpensesController(expensesService);
 

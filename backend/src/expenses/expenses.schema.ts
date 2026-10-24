@@ -1,11 +1,10 @@
 import { z } from 'zod';
-import { APP_MODULES } from '../organization/modules';
 
 const statusEnum = z.enum(['PENDING', 'PROCESSING', 'EXTRACTED', 'FAILED', 'SUBMITTED', 'APPROVED', 'REJECTED', 'SENT']);
 
 export const listExpensesQuerySchema = z.object({
   // Expenses (the default) or the organization's purchase invoices.
-  module: z.enum(APP_MODULES).default('EXPENSES'),
+  module: z.enum(['EXPENSES', 'PURCHASE_INVOICES']).default('EXPENSES'),
   status: statusEnum.optional(),
   search: z.string().trim().min(1).optional(),
   page: z.coerce.number().int().min(1).default(1),

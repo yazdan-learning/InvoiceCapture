@@ -6,7 +6,7 @@ export type ExpenseType = 'RECEIPT' | 'MILEAGE' | 'PER_DIEM' | 'GENERAL' | 'PURC
 export type Role = 'EMPLOYEE' | 'APPROVER' | 'ACCOUNTANT' | 'ADMIN';
 
 /** What the organization uses the app for (Settings → Modules). */
-export type AppModule = 'EXPENSES' | 'PURCHASE_INVOICES';
+export type AppModule = 'EXPENSES' | 'PURCHASE_INVOICES' | 'RAW_MATERIAL_PRICING';
 
 export type AuthUser = {
   id: string;

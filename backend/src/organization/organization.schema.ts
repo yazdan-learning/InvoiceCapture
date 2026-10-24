@@ -3,6 +3,8 @@ import { COUNTRY_IDS } from '../countries/country-profile';
 import { SUPPORTED_LANGUAGES } from '../shared/languages';
 import { APP_MODULES } from './modules';
 import { ACCOUNTING_CONNECTOR_IDS } from '../accounting/registry';
+import { CURRENCY_CONVERTER_IDS } from '../currency/registry';
+import { MATERIAL_MATCHER_IDS } from '../pricing/matchers/registry';
 
 export const updateOrganizationSettingsSchema = z
   .object({
@@ -16,7 +18,9 @@ export const updateOrganizationSettingsSchema = z
       .min(1, 'Enable at least one module')
       .transform((modules) => [...new Set(modules)])
       .optional(),
-    accountingConnector: z.enum(ACCOUNTING_CONNECTOR_IDS).optional()
+    accountingConnector: z.enum(ACCOUNTING_CONNECTOR_IDS).optional(),
+    currencyConverter: z.enum(CURRENCY_CONVERTER_IDS).optional(),
+    materialMatcher: z.enum(MATERIAL_MATCHER_IDS).optional()
   })
   .refine((data) => Object.values(data).some((value) => value !== undefined), {
     message: 'Provide at least one setting to update'

@@ -220,6 +220,14 @@ export const expensesRepository = {
     return org.modules;
   },
 
+  async getOrganizationCurrencyConverter(organizationId: string): Promise<string> {
+    const org = await prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { currencyConverter: true }
+    });
+    return org.currencyConverter;
+  },
+
   async getOrganizationAccountingConnector(organizationId: string): Promise<string> {
     const org = await prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },

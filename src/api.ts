@@ -394,6 +394,10 @@ export type OrganizationSettings = {
   supportedModules: { id: AppModule; name: string }[];
   accountingConnector: string;
   supportedAccountingConnectors: { id: string; name: string }[];
+  currencyConverter: string;
+  supportedCurrencyConverters: { id: string; name: string }[];
+  materialMatcher: string;
+  supportedMaterialMatchers: { id: string; name: string }[];
 };
 
 export type UpdateOrganizationSettingsPayload = Partial<{
@@ -403,6 +407,8 @@ export type UpdateOrganizationSettingsPayload = Partial<{
   country: string;
   modules: AppModule[];
   accountingConnector: string;
+  currencyConverter: string;
+  materialMatcher: string;
 }>;
 
 export type UpdatedOrganizationSettings = {
@@ -412,6 +418,8 @@ export type UpdatedOrganizationSettings = {
   country: string;
   modules: AppModule[];
   accountingConnector: string;
+  currencyConverter: string;
+  materialMatcher: string;
 };
 
 // What the UI adapts to for the organization's country (see backend/src/countries).
@@ -450,4 +458,72 @@ export async function updateOrganizationSettings(
     body: JSON.stringify(payload)
   });
   return parseJsonOrThrow(response);
+}
+
+// ─── Raw-material pricing (RAW_MATERIAL_PRICING module, accountants and admins) ───
+
+export type IndexSeriesOption = { id: string; label: string; depth: number };
+
+export type SeriesRef = { id: string; label: string };
+
+export type MaterialMatchStatus = 'NEEDS_REVIEW' | 'CONFIRMED' | 'NO_INDEX';
+
+export type PriceProposal = {
+  id: string;
+  previousPrice: number;
+  previousDate: string;
+  proposedPrice: number;
+  asOf: string;
+  change: number;
+  indexFrom: number;
+  indexTo: number;
+  indexPeriod: string;
+  fxFrom: number;
+  fxTo: number;
+};
+
+export type RawMaterial = {
+  id: string;
+  name: string;
+  unit: string | null;
+  currency: string;
+  currentPrice: number;
+  currentPriceDate: string;
+  matchStatus: MaterialMatchStatus;
+  /** The confirmed category its price follows. */
+  series: SeriesRef | null;
+  /** What the AI suggested and nobody has decided on yet; series null = "no category fits". */
+  suggestion: { series: SeriesRef | null; confidence: number | null; reason: string | null; by: string | null } | null;
+  matchError: string | null;
+  pendingProposal: PriceProposal | null;
+};
+
+export type PricingRunResult = { proposed: number; unchanged: number; failed: { name: string; error: string }[] };
+
+async function pricingRequest<T>(path: string, method = 'GET', body?: unknown, apiBaseUrl = defaultBaseUrl): Promise<T> {
+  const response = await fetch(apiUrl(`/api/pricing${path}`, apiBaseUrl), {
+    method,
+    headers: body === undefined ? authHeaders() : { 'Content-Type': 'application/json', ...authHeaders() },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  return parseJsonOrThrow(response);
+}
+
+export const listIndexSeries = () => pricingRequest<IndexSeriesOption[]>('/series');
+export const listRawMaterials = () => pricingRequest<RawMaterial[]>('/materials');
+export const createRawMaterial = (input: { name: string; unit: string | null; price: number; priceDate: string }) =>
+  pricingRequest<RawMaterial>('/materials', 'POST', input);
+export const updateRawMaterial = (id: string, input: Partial<{ name: string; unit: string | null; price: number; priceDate: string }>) =>
+  pricingRequest<RawMaterial>(`/materials/${id}`, 'PATCH', input);
+export const loadSampleMaterials = () => pricingRequest<{ added: number }>('/materials/sample', 'POST');
+export const rematchRawMaterial = (id: string) => pricingRequest<RawMaterial>(`/materials/${id}/rematch`, 'POST');
+export const confirmMaterialMatch = (id: string, seriesId: string | null) =>
+  pricingRequest<RawMaterial>(`/materials/${id}/confirm-match`, 'POST', { seriesId });
+export const runPricing = () => pricingRequest<PricingRunResult>('/run', 'POST');
+export const approvePriceProposal = (id: string) => pricingRequest<RawMaterial>(`/proposals/${id}/approve`, 'POST');
+export const rejectPriceProposal = (id: string) => pricingRequest<RawMaterial>(`/proposals/${id}/reject`, 'POST');
+
+export async function deleteRawMaterial(id: string, apiBaseUrl = defaultBaseUrl): Promise<void> {
+  const response = await fetch(apiUrl(`/api/pricing/materials/${id}`, apiBaseUrl), { method: 'DELETE', headers: authHeaders() });
+  return throwIfError(response);
 }

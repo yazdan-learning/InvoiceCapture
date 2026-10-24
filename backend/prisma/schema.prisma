@@ -38,14 +38,24 @@ model Organization {
   // "NONE" = no accounting system connected: sending only marks them as sent.
   accountingConnector String @default("NONE")
 
-  users      User[]
-  expenses   Expense[]
-  categories Category[]
+  // Where exchange rates come from (receipts, material pricing) — see
+  // backend/src/currency/registry.ts.
+  currencyConverter String @default("FRANKFURTER")
+
+  // Which AI matches raw materials to price-index categories (LLM, JEV, or
+  // both) — see backend/src/pricing/matchers/registry.ts.
+  materialMatcher String @default("LLM")
+
+  users        User[]
+  expenses     Expense[]
+  categories   Category[]
+  rawMaterials RawMaterial[]
 }
 
 enum AppModule {
   EXPENSES // employees' receipts and mileage, approved by their manager, reimbursed
   PURCHASE_INVOICES // supplier invoices, checked by the accountant and sent to the accounting system
+  RAW_MATERIAL_PRICING // raw-material prices kept up to date from a price index and the exchange rate
 }
 
 enum Role {
@@ -243,4 +253,82 @@ model ExpenseLineItem {
   totalPrice  Decimal? @db.Decimal(18, 2)
   taxRate     Decimal? @db.Decimal(5, 2)
   sortOrder   Int      @default(0)
+}
+
+// ─── Raw-material pricing (RAW_MATERIAL_PRICING module) ─────────────────────
+
+enum MaterialMatchStatus {
+  NEEDS_REVIEW // the AI suggested a category (or failed); a person hasn't confirmed it
+  CONFIRMED // seriesId is the category its price follows
+  NO_INDEX // confirmed: no index fits (e.g. transport), its price is kept by hand
+}
+
+// A raw material as named in the company's ERP. Its price follows one
+// price-index series (seriesId, confirmed by a person) and the exchange rate.
+// The AI's suggestion is kept apart (suggested*): renaming a material asks the
+// AI again, but the price keeps following the confirmed series until a person
+// accepts the new suggestion — a silent re-match would quietly change prices.
+model RawMaterial {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  name String
+  unit String?
+
+  // The last approved price and the day it applied: the next proposal is
+  // computed from here. Starts as the price the material was added with.
+  currency         String
+  currentPrice     Decimal  @db.Decimal(18, 2)
+  currentPriceDate DateTime
+
+  matchStatus MaterialMatchStatus @default(NEEDS_REVIEW)
+  seriesId    String?
+
+  suggestedSeriesId    String?
+  suggestionConfidence Decimal? @db.Decimal(5, 4)
+  suggestionReason     String?
+  suggestedBy          String? // "LLM", "JEV", "JEV+LLM", or "CONFIRMED" (reused from a confirmed material of the same name)
+  matchError           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  proposals MaterialPriceProposal[]
+
+  @@unique([organizationId, name])
+}
+
+enum PriceProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A new price computed from the index and the exchange rate, waiting for a
+// person: newPrice = previousPrice × indexRatio × fxRatio. At most one PENDING
+// per material (a later run replaces it).
+model MaterialPriceProposal {
+  id         String      @id @default(uuid())
+  materialId String
+  material   RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  seriesId      String
+  previousPrice Decimal  @db.Decimal(18, 2)
+  previousDate  DateTime
+  proposedPrice Decimal  @db.Decimal(18, 2)
+  asOf          DateTime
+
+  indexFrom   Decimal @db.Decimal(14, 4)
+  indexTo     Decimal @db.Decimal(14, 4)
+  indexPeriod String // the "YYYY-MM" of indexTo
+  fxFrom      Decimal @db.Decimal(24, 12)
+  fxTo        Decimal @db.Decimal(24, 12)
+
+  status    PriceProposalStatus @default(PENDING)
+  decidedBy String?
+  decidedAt DateTime?
+  createdAt DateTime            @default(now())
+
+  @@index([materialId, status])
 }

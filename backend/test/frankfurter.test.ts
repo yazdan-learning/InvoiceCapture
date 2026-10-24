@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FrankfurterCurrencyConverter } from '../src/expenses/adapters/frankfurter-currency-converter';
+import { FrankfurterCurrencyConverter } from '../src/currency/connectors/frankfurter';
+import { getCurrencyConverter } from '../src/currency/registry';
 
 function respond(body: unknown, status = 200) {
   return vi.fn(async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch & ReturnType<typeof vi.fn>;
@@ -33,5 +34,12 @@ describe('FrankfurterCurrencyConverter', () => {
 
   it('fails on an unknown currency', async () => {
     await expect(new FrankfurterCurrencyConverter(respond({ message: 'invalid currency: IRT' }, 422)).getRate('IRT', 'EUR')).rejects.toThrow('(422)');
+  });
+});
+
+describe('currency converter registry', () => {
+  it('has the free-market source, which says it is not connected yet', async () => {
+    await expect(getCurrencyConverter('FREE_MARKET').getRate('USD', 'IRR')).rejects.toThrow('not connected yet');
+    expect(() => getCurrencyConverter('NOPE')).toThrow('Unknown currency converter');
   });
 });

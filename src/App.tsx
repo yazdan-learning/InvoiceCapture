@@ -10,10 +10,11 @@ import { LoginPage } from './pages/LoginPage';
 import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
 import { AdminSettingsPage } from './pages/AdminSettingsPage';
+import { PricingPage } from './pages/PricingPage';
 import { AppShell } from './components/AppShell';
 import { useAuth } from './auth/AuthContext';
 import { useModules } from './workspace/ModulesContext';
-import { canHandlePurchaseInvoices } from './workspace/permissions';
+import { canHandlePurchaseInvoices, canManageMaterialPrices } from './workspace/permissions';
 import { AppModule, Role } from './types';
 
 function RequireRole({ roles, children }: { roles: Role[]; children: ReactElement }) {
@@ -35,6 +36,13 @@ function InvoicesOnly({ children }: { children: ReactElement }) {
   const { user } = useAuth();
   if (!user || !canHandlePurchaseInvoices(user.role)) return <Navigate to="/" replace />;
   return <RequireModule module="PURCHASE_INVOICES">{children}</RequireModule>;
+}
+
+// Raw-material pricing: the module and the accountant (or admin) role.
+function PricingOnly({ children }: { children: ReactElement }) {
+  const { user } = useAuth();
+  if (!user || !canManageMaterialPrices(user.role)) return <Navigate to="/" replace />;
+  return <RequireModule module="RAW_MATERIAL_PRICING">{children}</RequireModule>;
 }
 
 // Every authenticated route goes through here: redirect to /login if signed
@@ -126,6 +134,16 @@ function App() {
             <InvoicesOnly>
               <UploadPage expenseType="PURCHASE_INVOICE" />
             </InvoicesOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/pricing"
+        element={
+          <Protected>
+            <PricingOnly>
+              <PricingPage />
+            </PricingOnly>
           </Protected>
         }
       />

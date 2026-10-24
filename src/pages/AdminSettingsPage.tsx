@@ -23,6 +23,10 @@ export function AdminSettingsPage() {
   const [supportedModules, setSupportedModules] = useState<AppModule[]>([]);
   const [accountingConnector, setAccountingConnector] = useState('NONE');
   const [accountingConnectors, setAccountingConnectors] = useState<{ id: string; name: string }[]>([]);
+  const [currencyConverter, setCurrencyConverter] = useState('FRANKFURTER');
+  const [currencyConverters, setCurrencyConverters] = useState<{ id: string; name: string }[]>([]);
+  const [materialMatcher, setMaterialMatcher] = useState('LLM');
+  const [materialMatchers, setMaterialMatchers] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -38,6 +42,10 @@ export function AdminSettingsPage() {
         setSupportedModules(settings.supportedModules.map((m) => m.id));
         setAccountingConnector(settings.accountingConnector);
         setAccountingConnectors(settings.supportedAccountingConnectors);
+        setCurrencyConverter(settings.currencyConverter);
+        setCurrencyConverters(settings.supportedCurrencyConverters);
+        setMaterialMatcher(settings.materialMatcher);
+        setMaterialMatchers(settings.supportedMaterialMatchers);
       })
       .catch((err) => setError(err instanceof Error ? err.message : t('adminSettings.loadFailed')))
       .finally(() => setLoading(false));
@@ -59,6 +67,7 @@ export function AdminSettingsPage() {
 
   const expensesEnabled = modules.includes('EXPENSES');
   const invoicesEnabled = modules.includes('PURCHASE_INVOICES');
+  const pricingEnabled = modules.includes('RAW_MATERIAL_PRICING');
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -83,8 +92,10 @@ export function AdminSettingsPage() {
         defaultLanguage,
         country,
         modules,
-        // Only purchase invoices are sent to accounting.
-        ...(invoicesEnabled ? { accountingConnector } : {})
+        currencyConverter,
+        // Only purchase invoices are sent to accounting; only pricing matches materials.
+        ...(invoicesEnabled ? { accountingConnector } : {}),
+        ...(pricingEnabled ? { materialMatcher } : {})
       });
       setMileageRatePerKm(String(updated.mileageRatePerKm));
       setDefaultCurrency(updated.defaultCurrency);
@@ -92,6 +103,8 @@ export function AdminSettingsPage() {
       setCountry(updated.country);
       setModules(updated.modules);
       setAccountingConnector(updated.accountingConnector);
+      setCurrencyConverter(updated.currencyConverter);
+      setMaterialMatcher(updated.materialMatcher);
       reloadCountry();
       reloadModules();
       setSuccessMessage(t('adminSettings.saved'));
@@ -161,6 +174,23 @@ export function AdminSettingsPage() {
               </div>
             )}
 
+            {pricingEnabled && (
+              <div className="form-section">
+                <h3>{t('adminSettings.pricingSection')}</h3>
+                <div className="form-grid">
+                  <label className="form-field">
+                    <span>{t('adminSettings.materialMatcher')}</span>
+                    <Select
+                      value={materialMatcher}
+                      onChange={setMaterialMatcher}
+                      options={materialMatchers.map((m) => ({ value: m.id, label: m.name }))}
+                    />
+                  </label>
+                </div>
+                <p className="field-hint">{t('adminSettings.materialMatcherHint')}</p>
+              </div>
+            )}
+
             <div className="form-section">
               <h3>{t('adminSettings.countrySection')}</h3>
               <div className="form-grid">
@@ -189,6 +219,17 @@ export function AdminSettingsPage() {
                 </label>
               </div>
               <p className="field-hint">{t('adminSettings.currencyHint')}</p>
+              <div className="form-grid">
+                <label className="form-field">
+                  <span>{t('adminSettings.currencyConverter')}</span>
+                  <Select
+                    value={currencyConverter}
+                    onChange={setCurrencyConverter}
+                    options={currencyConverters.map((c) => ({ value: c.id, label: c.name }))}
+                  />
+                </label>
+              </div>
+              <p className="field-hint">{t('adminSettings.currencyConverterHint')}</p>
             </div>
 
             <div className="form-section">

@@ -8,6 +8,7 @@ import { canApprove, canHandlePurchaseInvoices } from '../auth/permissions';
 import { MODULE_NAMES, moduleOf } from '../organization/modules';
 import { AccountingConnector, AccountingInvoice } from '../accounting/ports';
 import { getAccountingConnector } from '../accounting/registry';
+import { getCurrencyConverter } from '../currency/registry';
 import { expensesRepository as prismaExpensesRepository, ExpensesRepository, LineItemInput } from './expenses.repository';
 import {
   ApproverResolver,
@@ -58,11 +59,12 @@ type Deps = {
   fileStorage: FileStorage;
   approverResolver: ApproverResolver;
   distanceCalculator: DistanceCalculator;
-  currencyConverter: CurrencyConverter;
   /** Prisma by default; tests pass a fake. */
   expensesRepository?: ExpensesRepository;
   /** The organization's accounting system, by its connector id (see accounting/registry.ts). */
   accountingConnectorFor?: (id: string) => AccountingConnector;
+  /** The organization's exchange-rate source, by its id (see currency/registry.ts). */
+  currencyConverterFor?: (id: string) => CurrencyConverter;
 };
 
 // mileageDistanceKm always stores the one-way distance; the round-trip factor
@@ -77,9 +79,9 @@ export function createExpensesService({
   fileStorage,
   approverResolver,
   distanceCalculator,
-  currencyConverter,
   expensesRepository = prismaExpensesRepository,
-  accountingConnectorFor = getAccountingConnector
+  accountingConnectorFor = getAccountingConnector,
+  currencyConverterFor = getCurrencyConverter
 }: Deps) {
   // The calculator throws plain Errors (not set up, no route found, etc.) —
   // rethrow as BadRequestError so the real message reaches the client instead
@@ -163,7 +165,8 @@ export function createExpensesService({
             // few days late shouldn't apply today's rate to an older purchase.
             // Falls back to today's rate if the date couldn't be extracted.
             const invoiceDate = toDate(data.invoiceDate) ?? undefined;
-            const { rate, asOf } = await currencyConverter.getRate(data.currency, defaultCurrency, invoiceDate);
+            const converter = currencyConverterFor(await expensesRepository.getOrganizationCurrencyConverter(organizationId));
+            const { rate, asOf } = await converter.getRate(data.currency, defaultCurrency, invoiceDate);
             originalCurrency = data.currency;
             originalSubtotal = data.subtotal;
             originalTaxAmount = data.taxAmount;

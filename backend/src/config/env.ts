@@ -52,6 +52,20 @@ export const env = {
       timeoutMs: Number(process.env.ASR_TIMEOUT_MS ?? 30_000)
     }
   },
+  // Raw-material pricing: which models can match materials to price-index
+  // categories (Settings → Material matching). The LLM above is always one of
+  // them; Jev (TypeSafe AI) only when JEV_API_KEY is set.
+  matching: {
+    jev: {
+      // The app URL from TypeSafe's app page; requests go to {baseUrl}/v1/systemone.
+      baseUrl: process.env.JEV_BASE_URL || '',
+      apiKey: process.env.JEV_API_KEY || '',
+      model: process.env.JEV_MODEL || 'jev/jev-latest',
+      timeoutMs: Number(process.env.JEV_TIMEOUT_MS ?? 15_000)
+    },
+    // "Jev, then LLM": below this confidence Jev's answer is checked by the LLM.
+    combinedMinConfidence: Number(process.env.MATCHER_COMBINED_MIN_CONFIDENCE ?? 0.7)
+  },
   uploadsDir: required('UPLOADS_DIR', './uploads'),
   corsOrigin: required('CORS_ORIGIN', 'http://localhost:5173'),
   jwtSecret: required('JWT_SECRET', 'dev-only-insecure-secret-change-me'),

@@ -1,11 +1,11 @@
 import { AppModule, Role } from '../types';
-import { canApprove, canHandlePurchaseInvoices } from './permissions';
+import { canApprove, canHandlePurchaseInvoices, canManageMaterialPrices } from './permissions';
 
 // The one list both the desktop sidebar and the mobile tab bar are built from:
 // each entry says which module it belongs to and who may see it, so a new
 // module or role changes this file, not every menu.
 
-export type NavItemId = 'dashboard' | 'expenses' | 'invoices' | 'approvals';
+export type NavItemId = 'dashboard' | 'expenses' | 'invoices' | 'pricing' | 'approvals';
 
 export type NavItem = {
   id: NavItemId;
@@ -28,6 +28,12 @@ const NAV_ITEMS: NavRule[] = [
     to: '/invoices',
     isActive: (path) => path === '/invoices' || path.startsWith('/invoices/'),
     visible: (role, modules) => modules.includes('PURCHASE_INVOICES') && canHandlePurchaseInvoices(role)
+  },
+  {
+    id: 'pricing',
+    to: '/pricing',
+    isActive: (path) => path === '/pricing',
+    visible: (role, modules) => modules.includes('RAW_MATERIAL_PRICING') && canManageMaterialPrices(role)
   },
   {
     id: 'approvals',

@@ -2,7 +2,7 @@ import { AppModule } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { UpdateOrganizationSettingsInput } from './organization.schema';
 
-const SETTINGS_SELECT = { mileageRatePerKm: true, defaultCurrency: true, defaultLanguage: true, country: true, modules: true, accountingConnector: true };
+const SETTINGS_SELECT = { mileageRatePerKm: true, defaultCurrency: true, defaultLanguage: true, country: true, modules: true, accountingConnector: true, currencyConverter: true, materialMatcher: true };
 
 export type OrganizationSettings = {
   mileageRatePerKm: number;
@@ -11,6 +11,8 @@ export type OrganizationSettings = {
   country: string;
   modules: AppModule[];
   accountingConnector: string;
+  currencyConverter: string;
+  materialMatcher: string;
 };
 
 function toSettings(org: Omit<OrganizationSettings, 'mileageRatePerKm'> & { mileageRatePerKm: unknown }): OrganizationSettings {
@@ -20,7 +22,9 @@ function toSettings(org: Omit<OrganizationSettings, 'mileageRatePerKm'> & { mile
     defaultLanguage: org.defaultLanguage,
     country: org.country,
     modules: org.modules,
-    accountingConnector: org.accountingConnector
+    accountingConnector: org.accountingConnector,
+    currencyConverter: org.currencyConverter,
+    materialMatcher: org.materialMatcher
   };
 }
 
@@ -42,7 +46,9 @@ export const organizationRepository = {
         ...(input.defaultLanguage !== undefined ? { defaultLanguage: input.defaultLanguage } : {}),
         ...(input.country !== undefined ? { country: input.country } : {}),
         ...(input.modules !== undefined ? { modules: input.modules } : {}),
-        ...(input.accountingConnector !== undefined ? { accountingConnector: input.accountingConnector } : {})
+        ...(input.accountingConnector !== undefined ? { accountingConnector: input.accountingConnector } : {}),
+        ...(input.currencyConverter !== undefined ? { currencyConverter: input.currencyConverter } : {}),
+        ...(input.materialMatcher !== undefined ? { materialMatcher: input.materialMatcher } : {})
       },
       select: SETTINGS_SELECT
     });

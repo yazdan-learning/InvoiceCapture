@@ -5,6 +5,8 @@ import { SUPPORTED_LANGUAGES } from '../shared/languages';
 import { BadRequestError } from '../shared/errors';
 import { APP_MODULES, MODULE_NAMES } from './modules';
 import { ACCOUNTING_CONNECTOR_IDS, ACCOUNTING_CONNECTOR_NAMES } from '../accounting/registry';
+import { CURRENCY_CONVERTER_IDS, CURRENCY_CONVERTER_NAMES } from '../currency/registry';
+import { MATERIAL_MATCHER_IDS, MATERIAL_MATCHER_NAMES } from '../pricing/matchers/registry';
 
 export function createOrganizationService(repository: OrganizationRepository = organizationRepository) {
   return {
@@ -16,7 +18,9 @@ export function createOrganizationService(repository: OrganizationRepository = o
         supportedLanguages: SUPPORTED_LANGUAGES,
         supportedCountries: listCountries(),
         supportedModules: APP_MODULES.map((id) => ({ id, name: MODULE_NAMES[id] })),
-        supportedAccountingConnectors: ACCOUNTING_CONNECTOR_IDS.map((id) => ({ id, name: ACCOUNTING_CONNECTOR_NAMES[id] }))
+        supportedAccountingConnectors: ACCOUNTING_CONNECTOR_IDS.map((id) => ({ id, name: ACCOUNTING_CONNECTOR_NAMES[id] })),
+        supportedCurrencyConverters: CURRENCY_CONVERTER_IDS.map((id) => ({ id, name: CURRENCY_CONVERTER_NAMES[id] })),
+        supportedMaterialMatchers: MATERIAL_MATCHER_IDS.map((id) => ({ id, name: MATERIAL_MATCHER_NAMES[id] }))
       };
     },
 

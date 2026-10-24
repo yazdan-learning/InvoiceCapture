@@ -9,11 +9,14 @@ import { formatAmount } from '../lib/money';
 
 type StatusTab = { key: string; value: ExpenseStatus | 'ALL' };
 
+/** The modules whose records are expenses (raw-material pricing has its own page). */
+type ExpenseModule = Exclude<AppModule, 'RAW_MATERIAL_PRICING'>;
+
 // One list page for both modules: what differs is the statuses a record goes
 // through, where it links, and the texts. Purchase invoices have no approval
 // and no category, and their export comes later (with the accounting connectors).
 const LIST_CONFIG: Record<
-  AppModule,
+  ExpenseModule,
   {
     tabs: StatusTab[];
     basePath: string;
@@ -82,7 +85,7 @@ function expenseDate(expense: Expense): string | null {
   return expense.expenseType === 'MILEAGE' ? expense.mileageDate : expense.invoiceDate;
 }
 
-export function ExpenseListPage({ module = 'EXPENSES' }: { module?: AppModule }) {
+export function ExpenseListPage({ module = 'EXPENSES' }: { module?: ExpenseModule }) {
   const config = LIST_CONFIG[module];
   const navigate = useNavigate();
   const { t } = useTranslation();

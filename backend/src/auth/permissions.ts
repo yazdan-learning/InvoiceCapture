@@ -13,3 +13,5 @@ export const ACCOUNTANT_ROLES: Role[] = ['ACCOUNTANT', 'ADMIN'];
 
 export const canApprove = (role: Role) => APPROVER_ROLES.includes(role);
 export const canHandlePurchaseInvoices = (role: Role) => ACCOUNTANT_ROLES.includes(role);
+/** Keep the raw-material list, review matches and approve new prices — the same people as purchase invoices. */
+export const canManageMaterialPrices = (role: Role) => ACCOUNTANT_ROLES.includes(role);

@@ -21,6 +21,11 @@ describe('navigation', () => {
     expect(ids('ACCOUNTANT', ['EXPENSES', 'PURCHASE_INVOICES'])).toEqual(['dashboard', 'expenses', 'invoices']);
   });
 
+  it('shows raw-material pricing to accountants and admins with that module', () => {
+    expect(ids('ACCOUNTANT', ['PURCHASE_INVOICES', 'RAW_MATERIAL_PRICING'])).toEqual(['dashboard', 'invoices', 'pricing']);
+    expect(ids('EMPLOYEE', ['EXPENSES', 'RAW_MATERIAL_PRICING'])).toEqual(['dashboard', 'expenses']);
+  });
+
   it('gives an employee nothing to add in an invoice-only organization', () => {
     expect(ids('EMPLOYEE', ['PURCHASE_INVOICES'])).toEqual(['dashboard']);
     expect(addActionFor('EMPLOYEE', ['PURCHASE_INVOICES'])).toBeNull();
