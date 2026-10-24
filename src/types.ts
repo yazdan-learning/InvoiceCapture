@@ -60,6 +60,7 @@ export type Expense = {
   customerName: string | null;
   customerAddress: string | null;
   subtotal: string | null;
+  discountAmount: string | null;
   taxRate: string | null;
   taxAmount: string | null;
   totalAmount: string | null;
@@ -73,11 +74,14 @@ export type Expense = {
   // default at the time).
   originalCurrency: string | null;
   originalSubtotal: string | null;
+  originalDiscountAmount: string | null;
   originalTaxAmount: string | null;
   originalTotalAmount: string | null;
   exchangeRate: string | null;
   exchangeRateDate: string | null;
   isDuplicate: boolean;
+  /** Only in the upload response: the other invoices read from the same file, each saved on its own. */
+  alsoCreated?: string[];
   duplicateOfId: string | null;
   errorMessage: string | null;
   // Purchase invoices only.

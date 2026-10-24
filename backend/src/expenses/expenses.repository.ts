@@ -27,6 +27,7 @@ export type CreateExpenseInput = {
   customerName?: string | null;
   customerAddress?: string | null;
   subtotal?: number | null;
+  discountAmount?: number | null;
   taxRate?: number | null;
   taxAmount?: number | null;
   totalAmount?: number | null;
@@ -36,6 +37,7 @@ export type CreateExpenseInput = {
   notes?: string | null;
   originalCurrency?: string | null;
   originalSubtotal?: number | null;
+  originalDiscountAmount?: number | null;
   originalTaxAmount?: number | null;
   originalTotalAmount?: number | null;
   exchangeRate?: number | null;
@@ -94,6 +96,11 @@ export const expensesRepository = {
   // the service via the FileStorage port before this runs.
   delete(id: string) {
     return prisma.expense.delete({ where: { id } });
+  },
+
+  /** How many expenses point at a stored file (several when one file held several invoices). */
+  countByFilePath(filePath: string) {
+    return prisma.expense.count({ where: { filePath } });
   },
 
   findPotentialDuplicate(

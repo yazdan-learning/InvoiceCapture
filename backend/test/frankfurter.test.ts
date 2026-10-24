@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FrankfurterCurrencyConverter } from '../src/currency/connectors/frankfurter';
+import { FreeMarketCurrencyConverter } from '../src/currency/connectors/free-market';
 import { getCurrencyConverter } from '../src/currency/registry';
 
 function respond(body: unknown, status = 200) {
@@ -38,8 +39,9 @@ describe('FrankfurterCurrencyConverter', () => {
 });
 
 describe('currency converter registry', () => {
-  it('has the free-market source, which says it is not connected yet', async () => {
-    await expect(getCurrencyConverter('FREE_MARKET').getRate('USD', 'IRR')).rejects.toThrow('not connected yet');
+  it('has both sources and refuses an unknown one', () => {
+    expect(getCurrencyConverter('FRANKFURTER')).toBeInstanceOf(FrankfurterCurrencyConverter);
+    expect(getCurrencyConverter('FREE_MARKET')).toBeInstanceOf(FreeMarketCurrencyConverter);
     expect(() => getCurrencyConverter('NOPE')).toThrow('Unknown currency converter');
   });
 });

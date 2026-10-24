@@ -9,6 +9,7 @@ describe('invoice prompts', () => {
     expect(prompt).not.toContain('Persian invoices');
     expect(prompt).not.toContain('Shamsi');
     expect(prompt).toContain('"invoiceDate": "YYYY-MM-DD"|null');
+    expect(prompt).not.toContain('transfer');
   });
 
   it("adds Iran's rules to the shared ones", () => {
@@ -16,6 +17,8 @@ describe('invoice prompts', () => {
     expect(prompt).toContain('Rules:');
     expect(prompt).toContain('Persian invoices (فاکتور):');
     expect(prompt).toContain('"YYYY/MM/DD (Shamsi)"');
+    expect(prompt).toContain('"transfer": {"amount": number');
+    expect(prompt).toContain('رسید انتقال وجه');
   });
 
   it('keeps the country rules on the re-read', () => {

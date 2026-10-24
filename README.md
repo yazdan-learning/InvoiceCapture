@@ -32,7 +32,8 @@ An organization can use any combination of the modules.
   calendar and date picker, Rial/Toman, Persian prompts, "handwritten" option on upload).
 - Multi-currency: receipts are converted into the organization's currency at the invoice
   date's rate; the original amounts are kept. Exchange rates come from the source chosen in
-  Settings → Currency (Frankfurter today; "Free market" is listed but not connected yet).
+  Settings → Currency (Frankfurter, or the free-market rate from ASR — USD, EUR and CNY against Rial, latest
+  rates only).
 - Material matching: the AI that matches raw materials to index categories is chosen in
   Settings (an LLM, TypeSafe's Jev, or Jev with the LLM as a fallback).
 - Roles: `EMPLOYEE`, `APPROVER`, `ACCOUNTANT` (purchase invoices only), `ADMIN`.

@@ -80,3 +80,15 @@ export function toInvoiceData(data: Record<string, unknown>, calendar: Calendar)
     notes: text(data.notes)
   };
 }
+
+/** A bank transfer receipt scanned with the invoice (only countries whose profile asks for "transfer"). */
+export type TransferReceipt = { amount: number; currency: string | null; date: string | null; payee: string | null };
+
+export function toTransfer(data: Record<string, unknown>, calendar: Calendar): TransferReceipt | null {
+  const transfer = data.transfer;
+  if (!transfer || typeof transfer !== 'object') return null;
+  const t = transfer as Record<string, unknown>;
+  const amount = num(t.amount);
+  if (!amount || amount <= 0) return null;
+  return { amount, currency: text(t.currency)?.toUpperCase() ?? null, date: date(t.date, calendar), payee: text(t.payee) };
+}

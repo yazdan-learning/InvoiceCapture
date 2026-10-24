@@ -21,6 +21,8 @@ export type AccountingInvoice = {
   vendorAddress: string | null;
   vendorTaxId: string | null;
   subtotal: number | null;
+  /** On the whole invoice, positive; subtotal is before it, totalAmount after it. */
+  discountAmount: number | null;
   taxAmount: number | null;
   totalAmount: number;
   currency: string | null;

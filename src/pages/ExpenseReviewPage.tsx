@@ -38,6 +38,7 @@ type FormState = {
   customerName: string;
   customerAddress: string;
   subtotal: string;
+  discountAmount: string;
   taxRate: string;
   taxAmount: string;
   totalAmount: string;
@@ -71,6 +72,7 @@ function toFormState(expense: Expense): FormState {
     customerName: expense.customerName ?? '',
     customerAddress: expense.customerAddress ?? '',
     subtotal: toAmountInput(expense.subtotal),
+    discountAmount: toAmountInput(expense.discountAmount),
     taxRate: expense.taxRate ?? '',
     taxAmount: toAmountInput(expense.taxAmount),
     totalAmount: toAmountInput(expense.totalAmount),
@@ -115,11 +117,30 @@ const FIELD_LABELS: Record<string, string> = {
   items: 'review.lineItems'
 };
 
-/** The fields to check first on a handwritten reading, or null for any other warning. */
+/** The fields to check first on a handwritten reading (its warning comes last), or null for any other warning. */
 function handwrittenFields(errorMessage: string | null): string[] | null {
-  if (!errorMessage?.startsWith(HANDWRITTEN_PREFIX)) return null;
+  if (!errorMessage?.includes(HANDWRITTEN_PREFIX)) return null;
   const listed = errorMessage.split('Check especially:')[1];
   return listed ? listed.split(',').map((f) => f.trim()).filter(Boolean) : [];
+}
+
+// The backend's other reading warnings (direct-extractor.ts), joined with ". " when there are several.
+const READING_WARNINGS: { match: RegExp; key: string }[] = [
+  { match: /seems to hold (\d+) invoices/, key: 'review.severalInvoices' },
+  { match: /Only the bank transfer in the file could be read/, key: 'review.transferOnly' },
+  { match: /paid the other invoices of this file/, key: 'review.notInTransfer' },
+  { match: /corrected to match the bank transfer/, key: 'review.paidAmountFitted' },
+  { match: /do not match the bank transfer/, key: 'review.paidAmountDiffers' },
+  { match: /items do not add up/, key: 'review.amountsUnchecked' }
+];
+
+/** Translation keys (with their {count}) of the warnings in the message; "amounts unchecked" when none is known. */
+function readingWarnings(errorMessage: string): { key: string; count?: string }[] {
+  const found = READING_WARNINGS.flatMap(({ match, key }) => {
+    const hit = errorMessage.match(match);
+    return hit ? [{ key, count: hit[1] }] : [];
+  });
+  return found.length || handwrittenFields(errorMessage) ? found : [{ key: 'review.amountsUnchecked' }];
 }
 
 export function ExpenseReviewPage() {
@@ -130,7 +151,9 @@ export function ExpenseReviewPage() {
   const { t } = useTranslation();
   const { formatDateTime } = useCountry();
   const isDesktop = useIsDesktop();
-  const justUploaded = Boolean((location.state as { justUploaded?: boolean } | null)?.justUploaded);
+  const uploadState = location.state as { justUploaded?: boolean; fileParts?: string[] } | null;
+  const justUploaded = Boolean(uploadState?.justUploaded);
+  const fileParts = uploadState?.fileParts ?? [];
 
   const [expense, setExpense] = useState<Expense | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -216,6 +239,7 @@ export function ExpenseReviewPage() {
             ...prev,
             currency: expense.originalCurrency ?? prev.currency,
             subtotal: expense.originalSubtotal != null ? toAmountInput(expense.originalSubtotal) : prev.subtotal,
+            discountAmount: expense.originalDiscountAmount != null ? toAmountInput(expense.originalDiscountAmount) : prev.discountAmount,
             taxAmount: expense.originalTaxAmount != null ? toAmountInput(expense.originalTaxAmount) : prev.taxAmount,
             totalAmount: expense.originalTotalAmount != null ? toAmountInput(expense.originalTotalAmount) : prev.totalAmount
           }
@@ -251,6 +275,7 @@ export function ExpenseReviewPage() {
       customerName: emptyToNull(form.customerName),
       customerAddress: emptyToNull(form.customerAddress),
       subtotal: numberOrNull(form.subtotal),
+      discountAmount: numberOrNull(form.discountAmount),
       taxRate: numberOrNull(form.taxRate),
       taxAmount: numberOrNull(form.taxAmount),
       totalAmount: numberOrNull(form.totalAmount),
@@ -544,6 +569,23 @@ export function ExpenseReviewPage() {
         </div>
       )}
 
+      {fileParts.length > 1 && fileParts.includes(expense.id) && (
+        <div className="alert alert-info">
+          <span>
+            {t('review.splitNotice', { count: String(fileParts.length) })}{' '}
+            {fileParts.map((partId, index) =>
+              partId === expense.id ? (
+                <strong key={partId}>{index + 1} </strong>
+              ) : (
+                <Link key={partId} to={`${listPath}/${partId}`} state={uploadState}>
+                  {index + 1}{' '}
+                </Link>
+              )
+            )}
+          </span>
+        </div>
+      )}
+
       {expense.isDuplicate && (
         <div className="alert alert-warning">
           <span>{t('review.duplicateNotice')}</span>
@@ -552,7 +594,10 @@ export function ExpenseReviewPage() {
 
       {expense.status === 'EXTRACTED' && expense.errorMessage && (
         <div className="alert alert-warning">
-          {handwrittenCheck ? (
+          {readingWarnings(expense.errorMessage).map(({ key, count }) => (
+            <span key={key}>{t(key, count ? { count } : undefined)} </span>
+          ))}
+          {handwrittenCheck && (
             <span>
               {t('review.handwrittenCheck')}
               {handwrittenCheck.length > 0 && (
@@ -564,8 +609,6 @@ export function ExpenseReviewPage() {
                 </>
               )}
             </span>
-          ) : (
-            <span>{t('review.amountsUnchecked')}</span>
           )}
         </div>
       )}
@@ -819,6 +862,10 @@ export function ExpenseReviewPage() {
                   <label className="form-field">
                     <span>{t('review.subtotal')}</span>
                     <AmountInput value={form.subtotal} onChange={(value) => updateField('subtotal', value)} />
+                  </label>
+                  <label className="form-field">
+                    <span>{t('review.discount')}</span>
+                    <AmountInput value={form.discountAmount} onChange={(value) => updateField('discountAmount', value)} />
                   </label>
                   <label className="form-field">
                     <span>{t('review.taxRate')}</span>

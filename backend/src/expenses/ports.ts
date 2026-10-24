@@ -31,7 +31,7 @@ export type ExtractedInvoiceData = {
   customerAddress: string | null;
   items: ExtractedInvoiceItem[];
   subtotal: number | null;
-  /** Discount on the whole invoice (تخفیف), only for checking the sums — not stored. */
+  /** Discount on the whole invoice (تخفیف), as a positive amount. */
   discount?: number | null;
   taxRate: number | null;
   taxAmount: number | null;
@@ -47,6 +47,8 @@ export type ExtractionResult = {
   data?: ExtractedInvoiceData;
   error?: string;
   raw: unknown; // full provider response, stored as-is on the invoice for audit/debugging
+  /** Further invoices found in the same file (several receipts scanned into one PDF), each saved as its own expense. */
+  more?: { data: ExtractedInvoiceData; error?: string; raw: unknown }[];
 };
 
 export type ExtractOptions = {

@@ -12,8 +12,8 @@ export type CompletionRequest = {
   prompt: string;
   temperature: number;
   maxTokens: number;
-  /** A photo the model looks at with the prompt, as a data: URL (needs a vision-capable model). */
-  image?: string;
+  /** A photo the model looks at with the prompt, as a data: URL (needs a vision-capable model); several for the pages of one document. */
+  image?: string | string[];
 };
 
 export interface LlmClient {

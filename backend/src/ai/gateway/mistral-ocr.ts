@@ -12,8 +12,11 @@ export type MistralOcrConfig = {
 
 type OcrResponse = { pages?: { markdown?: string }[]; usage_info?: { pages_processed?: number }; message?: string; detail?: unknown };
 
-/** Pages read from a PDF (0-based); shorter PDFs are fine. */
-const PDF_PAGES = [0, 1, 2];
+/**
+ * Pages read from a PDF (0-based); shorter PDFs are fine. A scanner-app PDF can
+ * hold several receipts and the payment's bank transfer, so more than the first few.
+ */
+const PDF_PAGES = [0, 1, 2, 3, 4, 5, 6, 7];
 
 /** Mistral's document OCR (the same service the n8n flow uses), sent the file inline. */
 export class MistralOcr implements OcrClient {

@@ -41,7 +41,12 @@ export class OpenAiCompatibleLlm implements LlmClient {
           messages: [
             { role: 'system', content: system },
             // The object form of image_url is what both OpenAI and Mistral accept.
-            { role: 'user', content: image ? [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: image } }] : prompt }
+            {
+              role: 'user',
+              content: image
+                ? [{ type: 'text', text: prompt }, ...[image].flat().map((url) => ({ type: 'image_url', image_url: { url } }))]
+                : prompt
+            }
           ],
           temperature,
           max_completion_tokens: maxTokens,

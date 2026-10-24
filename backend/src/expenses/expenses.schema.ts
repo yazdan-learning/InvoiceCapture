@@ -40,6 +40,7 @@ export const updateExpenseSchema = z.object({
   customerName: z.string().nullable().optional(),
   customerAddress: z.string().nullable().optional(),
   subtotal: z.number().nullable().optional(),
+  discountAmount: z.number().nonnegative().nullable().optional(),
   taxRate: z.number().nullable().optional(),
   taxAmount: z.number().nullable().optional(),
   totalAmount: z.number().nullable().optional(),

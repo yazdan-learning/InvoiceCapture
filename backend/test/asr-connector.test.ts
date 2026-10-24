@@ -5,7 +5,7 @@ import { AsrConnector, toAsrInvoice } from '../src/accounting/connectors/asr';
 function invoice(overrides: Partial<AccountingInvoice> = {}): AccountingInvoice {
   return {
     id: 'inv1', invoiceNumber: 'F-12', invoiceDate: new Date('2026-10-24'), dueDate: null, vendorName: 'Kaveh Co.',
-    vendorAddress: null, vendorTaxId: null, subtotal: 4_000_000, taxAmount: null, totalAmount: 4_000_000, currency: 'IRR', notes: null,
+    vendorAddress: null, vendorTaxId: null, subtotal: 4_000_000, discountAmount: null, taxAmount: null, totalAmount: 4_000_000, currency: 'IRR', notes: null,
     items: [
       { description: 'Service A', quantity: 2, unitPrice: 1_500_000, totalPrice: 3_000_000, taxRate: null },
       { description: 'Service B', quantity: 4, unitPrice: 250_000, totalPrice: 1_000_000, taxRate: null }
@@ -29,11 +29,28 @@ describe('toAsrInvoice', () => {
       title: 'فاکتور خرید F-12',
       invoiceDescription: 'شماره فاکتور: F-12',
       invoiceDate: '2026-10-24',
+      subTotal: 4_000_000,
+      discount: 0,
+      total: 4_000_000,
       manualInvoiceDetailList: [
         { rowNumber: 1, itemDesc: 'Service A', unitPrice: 1_500_000, measure: 2, total: 3_000_000 },
         { rowNumber: 2, itemDesc: 'Service B', unitPrice: 250_000, measure: 4, total: 1_000_000 }
       ]
     });
+  });
+
+  it('sends the discount, with the total after it (the example in the ASR documentation)', () => {
+    expect(toAsrInvoice(invoice({ discountAmount: 200_000, totalAmount: 3_800_000 }))).toMatchObject({
+      subTotal: 4_000_000,
+      discount: 200_000,
+      total: 3_800_000
+    });
+  });
+
+  it('adds VAT after a discount as a line of its own, since ASR has no tax field', () => {
+    const body = toAsrInvoice(invoice({ discountAmount: 200_000, taxAmount: 380_000, totalAmount: 4_180_000 }));
+    expect(body).toMatchObject({ subTotal: 4_380_000, discount: 200_000, total: 4_180_000 });
+    expect(body.manualInvoiceDetailList).toHaveLength(3);
   });
 
   it('adds VAT printed under the lines as a line of its own, since ASR totals the lines', () => {
@@ -58,8 +75,11 @@ describe('toAsrInvoice', () => {
     expect(line).toMatchObject({ unitPrice: 4_000_000, measure: 1, total: 4_000_000 });
   });
 
-  it('refuses lines that do not add up to the total (ASR has no discount field)', () => {
-    expect(() => toAsrInvoice(invoice({ totalAmount: 3_800_000 }))).toThrow('lines add up to 4,000,000 but the invoice total is 3,800,000');
+  it('refuses amounts that do not add up, since ASR saves them as they are', () => {
+    expect(() => toAsrInvoice(invoice({ totalAmount: 3_800_000 }))).toThrow('lines add up to 4,000,000, but the invoice total is 3,800,000');
+    expect(() => toAsrInvoice(invoice({ discountAmount: 100_000, totalAmount: 3_800_000 }))).toThrow(
+      'minus the discount of 100,000 is 3,900,000, but the invoice total is 3,800,000'
+    );
   });
 
   it("cuts texts to ASR's column sizes instead of having the invoice rejected", () => {

@@ -29,6 +29,11 @@ export type InvoiceRules = {
   dateFormat: string;
   /** Extraction rules for this country's invoices, appended to the shared prompt rules. */
   promptRules: string;
+  /**
+   * Further JSON fields (schema lines, each starting with a comma) this country's invoices are read with,
+   * e.g. Iran's bank transfer receipt scanned with the invoice. Never stored; the extractor checks against them.
+   */
+  extraFields?: string;
   currencyUnits: CurrencyUnit[];
   /** Present only where handwritten invoices are supported; enables the "handwritten" upload option. */
   handwriting?: HandwritingRules;

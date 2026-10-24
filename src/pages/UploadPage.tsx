@@ -72,7 +72,9 @@ export function UploadPage({ expenseType = 'RECEIPT' }: { expenseType?: 'RECEIPT
       const response = await uploadReceipt({ file, expenseType, handwritten: handwritten && country.features.handwrittenInvoices });
       if (response.data) {
         const base = expenseType === 'PURCHASE_INVOICE' ? '/invoices' : '/expenses';
-        navigate(`${base}/${response.data.id}`, { state: { justUploaded: true } });
+        // Several invoices in one file: the review page links them to each other.
+        const fileParts = response.data.alsoCreated?.length ? [response.data.id, ...response.data.alsoCreated] : undefined;
+        navigate(`${base}/${response.data.id}`, { state: { justUploaded: true, fileParts } });
       } else {
         throw new Error(response.message || t('upload.extractionFailed'));
       }

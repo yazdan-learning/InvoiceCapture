@@ -15,7 +15,7 @@ function storedInvoice(overrides: Record<string, unknown> = {}) {
   return {
     id: 'inv1', expenseType: 'PURCHASE_INVOICE', status: 'EXTRACTED', uploadedBy: 'someone-else', approvals: [],
     invoiceNumber: 'F-12', invoiceDate: new Date('2026-10-01'), dueDate: null, vendorName: 'Kaveh Co.',
-    vendorAddress: null, vendorTaxId: null, subtotal: '1000', taxAmount: '90', totalAmount: '1090', currency: 'IRR',
+    vendorAddress: null, vendorTaxId: null, subtotal: '1000', discountAmount: null, taxAmount: '90', totalAmount: '1090', currency: 'IRR',
     notes: null, items: [{ description: 'Paper', quantity: '2', unitPrice: '500', totalPrice: '1000', taxRate: null }],
     ...overrides
   };
@@ -41,6 +41,7 @@ function setup({
   } satisfies InvoiceExtractor;
   const currencyConverter = { getRate: vi.fn(async () => ({ rate: 2_000_000, asOf: new Date('2026-10-01') })) } satisfies CurrencyConverter;
   // Only what these tests touch; the rest of the repository is never called here.
+  const fileStorage = { save: vi.fn(async () => 'path'), read: vi.fn(), delete: vi.fn() };
   const repository = {
     getOrganizationCountry: vi.fn(async () => country),
     getOrganizationDefaultCurrency: vi.fn(async () => defaultCurrency),
@@ -48,6 +49,8 @@ function setup({
     getOrganizationAccountingConnector: vi.fn(async () => 'NONE'),
     getOrganizationCurrencyConverter: vi.fn(async () => 'FRANKFURTER'),
     findPotentialDuplicate: vi.fn(async () => null),
+    countByFilePath: vi.fn(async () => 1),
+    delete: vi.fn(async () => undefined),
     findById: vi.fn(async () => stored),
     list: vi.fn(async () => [[], 0]),
     create: vi.fn(async (input: unknown) => input),
@@ -56,13 +59,13 @@ function setup({
   const service = createExpensesService({
     extractor,
     expensesRepository: repository as unknown as ExpensesRepository,
-    fileStorage: { save: vi.fn(async () => 'path'), read: vi.fn(), delete: vi.fn() },
+    fileStorage,
     approverResolver: { getApprover: vi.fn() },
     distanceCalculator: { getDistance: vi.fn() },
     accountingConnectorFor: () => connector,
     currencyConverterFor: () => currencyConverter
   });
-  return { service, extractor, currencyConverter, repository, connector };
+  return { service, extractor, currencyConverter, repository, connector, fileStorage };
 }
 
 describe('uploadAndExtract', () => {
@@ -86,6 +89,26 @@ describe('uploadAndExtract', () => {
     expect(extractor.extract.mock.calls[0][1]).not.toHaveProperty('expenseType');
   });
 
+  it('saves every invoice of a file that holds several, all pointing at the one file', async () => {
+    const { service, extractor, repository } = setup({ modules: ['PURCHASE_INVOICES'], defaultCurrency: 'IRR' });
+    const reading = (totalAmount: number) => ({ totalAmount, currency: 'IRR' });
+    const base = (await extractor.extract(photo)).data!;
+    extractor.extract.mockResolvedValueOnce({
+      success: true,
+      data: { ...base, ...reading(100) },
+      raw: { part: 1 },
+      more: [{ data: { ...base, ...reading(250) }, raw: { part: 2 } }, { data: { ...base, ...reading(400) }, error: 'check me', raw: { part: 3 } }]
+    } as never);
+
+    const first = (await service.uploadAndExtract('org', accountant, photo, { expenseType: 'PURCHASE_INVOICE' })) as unknown as Record<string, unknown>;
+
+    const saved = repository.create.mock.calls.map(([input]) => input as Record<string, unknown>);
+    expect(saved.map((s) => s.totalAmount)).toEqual([100, 250, 400]);
+    expect(new Set(saved.map((s) => s.filePath)).size).toBe(1);
+    expect(saved[2]).toMatchObject({ errorMessage: 'check me', rawExtraction: { part: 3 }, expenseType: 'PURCHASE_INVOICE' });
+    expect(first).toMatchObject({ totalAmount: 100, alsoCreated: [saved[1].id, saved[2].id] });
+  });
+
   it('refuses purchase invoices from employees', async () => {
     const { service } = setup({ modules: ['EXPENSES', 'PURCHASE_INVOICES'] });
     await expect(service.uploadAndExtract('org', employee, photo, { expenseType: 'PURCHASE_INVOICE' })).rejects.toThrow(ForbiddenError);
@@ -96,6 +119,19 @@ describe('uploadAndExtract', () => {
       'Purchase invoices are not enabled'
     );
     await expect(setup({ modules: ['PURCHASE_INVOICES'] }).service.uploadAndExtract('org', employee, photo)).rejects.toThrow('Expenses are not enabled');
+  });
+});
+
+describe('delete', () => {
+  it('keeps the file while another invoice read from it still uses it', async () => {
+    const { service, repository, fileStorage } = setup({ modules: ['PURCHASE_INVOICES'], stored: storedInvoice({ filePath: 'org/file.pdf' }) });
+    repository.countByFilePath.mockResolvedValueOnce(3);
+    await service.delete('org', 'inv1', accountant);
+    expect(fileStorage.delete).not.toHaveBeenCalled();
+    expect(repository.delete).toHaveBeenCalledWith('inv1');
+
+    await service.delete('org', 'inv1', accountant);
+    expect(fileStorage.delete).toHaveBeenCalledWith('org/file.pdf');
   });
 });
 

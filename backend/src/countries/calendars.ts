@@ -23,9 +23,11 @@ const gregorian: Calendar = {
 
 // Iranian invoices are dated in the Shamsi calendar, but some (imports,
 // card-terminal slips) print a Gregorian date: both are accepted.
+// A Shamsi year is around 1400, so a year from 1900 on is Gregorian however
+// it is written (the model copies "YYYY/MM/DD" for both).
 const persian: Calendar = {
   today: todayJalali,
-  toIsoDate: (value) => isoDate(value) ?? jalaliToIso(value)
+  toIsoDate: (value) => isoDate(value) ?? isoDate(value.replace(/\//g, '-')) ?? jalaliToIso(value)
 };
 
 const CALENDARS: Record<CalendarId, Calendar> = { gregorian, persian };

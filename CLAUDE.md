@@ -43,7 +43,7 @@ rows; to inspect data, run a small `tsx` script with the Prisma client.
   gets the list from the settings response. A CSV/Excel export connector is planned but
   postponed.
 - **Currency converters** (`Organization.currencyConverter`): `FRANKFURTER`, `FREE_MARKET`
-  (not connected yet) in `backend/src/currency/`, same registry pattern as accounting.
+  (ASR's exchange-rates endpoint, latest rates only) in `backend/src/currency/`, same registry pattern as accounting.
 - **Material matchers** (`Organization.materialMatcher`): `LLM`, `JEV`, `COMBINED` in
   `backend/src/pricing/matchers/`. The price index is sample data
   (`adapters/sample-price-index-source.ts`) until the BLS API is confirmed.

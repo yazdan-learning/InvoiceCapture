@@ -14,6 +14,7 @@ import {
   ApproverResolver,
   CurrencyConverter,
   DistanceCalculator,
+  ExtractedInvoiceData,
   ExtractOptions,
   FileStorage,
   InvoiceExtractor,
@@ -126,108 +127,129 @@ export function createExpensesService({
         errorMessage = err instanceof Error ? err.message : 'Extraction failed';
       }
 
-      const data = extraction?.success ? extraction.data : undefined;
-      const status: ExpenseStatus = data ? 'EXTRACTED' : 'FAILED';
+      // One file can hold several invoices (a scanner app's PDF of a few
+      // receipts): each becomes an expense of its own, sharing the file.
+      const saveReading = async (id: string, data: ExtractedInvoiceData | undefined, errorMessage: string | null, raw: unknown) => {
+        const status: ExpenseStatus = data ? 'EXTRACTED' : 'FAILED';
 
-      // Always checked against the raw extracted amount, before any currency
-      // conversion below — otherwise day-to-day FX rate drift would make two
-      // uploads of the identical invoice silently stop matching as duplicates.
-      const duplicate = data
-        ? await expensesRepository.findPotentialDuplicate(organizationId, {
-            vendorName: data.vendorName,
-            invoiceNumber: data.invoiceNumber,
-            totalAmount: data.totalAmount ?? null
-          })
-        : null;
+        // Always checked against the raw extracted amount, before any currency
+        // conversion below — otherwise day-to-day FX rate drift would make two
+        // uploads of the identical invoice silently stop matching as duplicates.
+        const duplicate = data
+          ? await expensesRepository.findPotentialDuplicate(organizationId, {
+              vendorName: data.vendorName,
+              invoiceNumber: data.invoiceNumber,
+              totalAmount: data.totalAmount ?? null
+            })
+          : null;
 
-      // Convert into the org's default currency if the extracted currency
-      // differs. originalCurrency/original*/exchangeRate* are written once
-      // here and never touched again — see the comment on update() for why
-      // later edits don't retrigger this. A conversion failure (FX API down,
-      // unsupported currency) never blocks the upload; the expense is simply
-      // saved with its original currency untouched.
-      let currency = data?.currency ?? null;
-      let subtotal = data?.subtotal ?? null;
-      let taxAmount = data?.taxAmount ?? null;
-      let totalAmount = data?.totalAmount ?? null;
-      let originalCurrency: string | null = null;
-      let originalSubtotal: number | null = null;
-      let originalTaxAmount: number | null = null;
-      let originalTotalAmount: number | null = null;
-      let exchangeRate: number | null = null;
-      let exchangeRateDate: Date | null = null;
+        // Convert into the org's default currency if the extracted currency
+        // differs. originalCurrency/original*/exchangeRate* are written once
+        // here and never touched again — see the comment on update() for why
+        // later edits don't retrigger this. A conversion failure (FX API down,
+        // unsupported currency) never blocks the upload; the expense is simply
+        // saved with its original currency untouched.
+        let currency = data?.currency ?? null;
+        let subtotal = data?.subtotal ?? null;
+        let discountAmount = data?.discount ?? null;
+        let taxAmount = data?.taxAmount ?? null;
+        let totalAmount = data?.totalAmount ?? null;
+        let originalCurrency: string | null = null;
+        let originalSubtotal: number | null = null;
+        let originalDiscountAmount: number | null = null;
+        let originalTaxAmount: number | null = null;
+        let originalTotalAmount: number | null = null;
+        let exchangeRate: number | null = null;
+        let exchangeRateDate: Date | null = null;
 
-      if (data?.currency) {
-        const defaultCurrency = await expensesRepository.getOrganizationDefaultCurrency(organizationId);
-        if (data.currency !== defaultCurrency) {
-          try {
-            // Rate as of the invoice's own date, not today's — uploading a
-            // few days late shouldn't apply today's rate to an older purchase.
-            // Falls back to today's rate if the date couldn't be extracted.
-            const invoiceDate = toDate(data.invoiceDate) ?? undefined;
-            const converter = currencyConverterFor(await expensesRepository.getOrganizationCurrencyConverter(organizationId));
-            const { rate, asOf } = await converter.getRate(data.currency, defaultCurrency, invoiceDate);
-            originalCurrency = data.currency;
-            originalSubtotal = data.subtotal;
-            originalTaxAmount = data.taxAmount;
-            originalTotalAmount = data.totalAmount;
-            currency = defaultCurrency;
-            subtotal = data.subtotal != null ? data.subtotal * rate : null;
-            taxAmount = data.taxAmount != null ? data.taxAmount * rate : null;
-            totalAmount = data.totalAmount != null ? data.totalAmount * rate : null;
-            exchangeRate = rate;
-            exchangeRateDate = asOf;
-          } catch {
-            // Keep the original currency/amounts as extracted.
+        if (data?.currency) {
+          const defaultCurrency = await expensesRepository.getOrganizationDefaultCurrency(organizationId);
+          if (data.currency !== defaultCurrency) {
+            try {
+              // Rate as of the invoice's own date, not today's — uploading a
+              // few days late shouldn't apply today's rate to an older purchase.
+              // Falls back to today's rate if the date couldn't be extracted.
+              const invoiceDate = toDate(data.invoiceDate) ?? undefined;
+              const converter = currencyConverterFor(await expensesRepository.getOrganizationCurrencyConverter(organizationId));
+              const { rate, asOf } = await converter.getRate(data.currency, defaultCurrency, invoiceDate);
+              originalCurrency = data.currency;
+              originalSubtotal = data.subtotal;
+              originalDiscountAmount = data.discount ?? null;
+              originalTaxAmount = data.taxAmount;
+              originalTotalAmount = data.totalAmount;
+              currency = defaultCurrency;
+              subtotal = data.subtotal != null ? data.subtotal * rate : null;
+              discountAmount = data.discount != null ? data.discount * rate : null;
+              taxAmount = data.taxAmount != null ? data.taxAmount * rate : null;
+              totalAmount = data.totalAmount != null ? data.totalAmount * rate : null;
+              exchangeRate = rate;
+              exchangeRateDate = asOf;
+            } catch {
+              // Keep the original currency/amounts as extracted.
+            }
           }
         }
+
+        const items: LineItemInput[] = (data?.items ?? []).map((item) => ({
+          description: item.description,
+          quantity: item.quantity ?? null,
+          unitPrice: item.unitPrice ?? null,
+          totalPrice: item.totalPrice ?? null,
+          taxRate: item.taxRate ?? null
+        }));
+
+        return expensesRepository.create({
+          id,
+          organizationId,
+          uploadedBy: actor.userId,
+          expenseType,
+          filePath: relativePath,
+          mimeType: file.mimetype,
+          fileSizeB: file.size,
+          status,
+          invoiceNumber: data?.invoiceNumber ?? null,
+          invoiceDate: toDate(data?.invoiceDate),
+          dueDate: toDate(data?.dueDate),
+          vendorName: data?.vendorName ?? null,
+          vendorAddress: data?.vendorAddress ?? null,
+          vendorTaxId: data?.vendorTaxId ?? null,
+          customerName: data?.customerName ?? null,
+          customerAddress: data?.customerAddress ?? null,
+          subtotal,
+          discountAmount,
+          taxRate: data?.taxRate ?? null,
+          taxAmount,
+          totalAmount,
+          currency,
+          paymentMethod: data?.paymentMethod ?? null,
+          paymentTerms: data?.paymentTerms ?? null,
+          notes: data?.notes ?? null,
+          originalCurrency,
+          originalSubtotal,
+          originalDiscountAmount,
+          originalTaxAmount,
+          originalTotalAmount,
+          exchangeRate,
+          exchangeRateDate,
+          isDuplicate: Boolean(duplicate),
+          duplicateOfId: duplicate?.id ?? null,
+          rawExtraction: raw != null ? (raw as Prisma.InputJsonValue) : undefined,
+          errorMessage,
+          items
+        });
+      };
+
+      const first = await saveReading(
+        expenseId,
+        extraction?.success ? extraction.data : undefined,
+        errorMessage ?? extraction?.error ?? null,
+        extraction?.raw
+      );
+      const alsoCreated: string[] = [];
+      for (const part of extraction?.success ? extraction.more ?? [] : []) {
+        alsoCreated.push((await saveReading(randomUUID(), part.data, part.error ?? null, part.raw)).id);
       }
-
-      const items: LineItemInput[] = (data?.items ?? []).map((item) => ({
-        description: item.description,
-        quantity: item.quantity ?? null,
-        unitPrice: item.unitPrice ?? null,
-        totalPrice: item.totalPrice ?? null,
-        taxRate: item.taxRate ?? null
-      }));
-
-      return expensesRepository.create({
-        id: expenseId,
-        organizationId,
-        uploadedBy: actor.userId,
-        expenseType,
-        filePath: relativePath,
-        mimeType: file.mimetype,
-        fileSizeB: file.size,
-        status,
-        invoiceNumber: data?.invoiceNumber ?? null,
-        invoiceDate: toDate(data?.invoiceDate),
-        dueDate: toDate(data?.dueDate),
-        vendorName: data?.vendorName ?? null,
-        vendorAddress: data?.vendorAddress ?? null,
-        vendorTaxId: data?.vendorTaxId ?? null,
-        customerName: data?.customerName ?? null,
-        customerAddress: data?.customerAddress ?? null,
-        subtotal,
-        taxRate: data?.taxRate ?? null,
-        taxAmount,
-        totalAmount,
-        currency,
-        paymentMethod: data?.paymentMethod ?? null,
-        paymentTerms: data?.paymentTerms ?? null,
-        notes: data?.notes ?? null,
-        originalCurrency,
-        originalSubtotal,
-        originalTaxAmount,
-        originalTotalAmount,
-        exchangeRate,
-        exchangeRateDate,
-        isDuplicate: Boolean(duplicate),
-        duplicateOfId: duplicate?.id ?? null,
-        rawExtraction: extraction ? (extraction.raw as Prisma.InputJsonValue) : undefined,
-        errorMessage: errorMessage ?? extraction?.error ?? null,
-        items
-      });
+      return { ...first, alsoCreated };
     },
 
     async createMileageExpense(organizationId: string, userId: string, input: CreateMileageInput) {
@@ -374,7 +396,8 @@ export function createExpensesService({
         throw new BadRequestError('Only a draft, failed, or rejected expense can be deleted');
       }
 
-      if (expense.filePath) {
+      // The file stays while another invoice read from it still uses it.
+      if (expense.filePath && (await expensesRepository.countByFilePath(expense.filePath)) <= 1) {
         await fileStorage.delete(expense.filePath);
       }
       await expensesRepository.delete(id);
@@ -457,6 +480,7 @@ export function createExpensesService({
         vendorAddress: invoice.vendorAddress,
         vendorTaxId: invoice.vendorTaxId,
         subtotal: num(invoice.subtotal),
+        discountAmount: num(invoice.discountAmount),
         taxAmount: num(invoice.taxAmount),
         totalAmount,
         currency: invoice.currency,
@@ -494,13 +518,14 @@ export function createExpensesService({
       const expenses = await expensesRepository.listForExport(organizationId, status, uploadedBy);
 
       return toCsv(
-        ['Invoice Number', 'Invoice Date', 'Vendor', 'Category', 'Subtotal', 'Tax', 'Total', 'Currency', 'Status'],
+        ['Invoice Number', 'Invoice Date', 'Vendor', 'Category', 'Subtotal', 'Discount', 'Tax', 'Total', 'Currency', 'Status'],
         expenses.map((expense) => [
           expense.invoiceNumber,
           expense.invoiceDate ? expense.invoiceDate.toISOString().slice(0, 10) : null,
           expense.vendorName,
           expense.category?.name,
           expense.subtotal?.toString(),
+          expense.discountAmount?.toString(),
           expense.taxAmount?.toString(),
           expense.totalAmount?.toString(),
           expense.currency,

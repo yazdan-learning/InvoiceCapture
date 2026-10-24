@@ -75,6 +75,26 @@ type-specific fields (`filePath`/`vendorName`/`invoiceNumber`… for receipts,
 are all nullable for exactly this reason. The approval workflow (`Approval`, status
 lifecycle) is entirely generic — it doesn't know or care what `expenseType` it's approving.
 
+One uploaded file can hold several invoices (a scanner app's PDF of a few receipts). The first
+reading reports `invoiceCount`; when it is above 1, one more call reads them apart
+(`invoiceSplitPrompt`) and each is saved as its own expense with the same `filePath`. That call
+goes to the vision model with the page photos (up to 8, the scanner app's repeated logo left
+out), not the OCR text: OCR returns a page of receipts photographed side by side as a picture,
+drops columns and moves amounts to the wrong line. The text split is the fallback. The
+upload response's `alsoCreated` lists the other ids, and deleting one keeps the file while
+another still uses it. If they can't be read apart, the first is kept with a warning.
+
+Iran only (the profile's `extraFields`): a bank transfer receipt scanned with the invoice
+(رسید انتقال وجه, کارت به کارت) is the proof of payment, not an invoice, so it is never split
+off. Its printed amount, date and payee come back as `transfer` and the reading is checked
+against them (`fitToPaidAmount`): handwritten amounts that lost zeros or never say Toman or
+Rial are fitted to the amount paid, a misread Shamsi year falls back to the payment date, a
+printed reading that doesn't match is re-read once with the photo, and a file in which only
+the transfer could be read is saved as the payment. In a split file, the invoices that add up
+to the transfer (`paidByTransfer`, the only such set) were paid by it and the others are flagged;
+when no set does, all are. Each case leaves its own warning. The
+vision model gets every page of the PDF (up to 4), not only the largest.
+
 `PURCHASE_INVOICE` uses the same row and fields as `RECEIPT`, plus `sentToAccountingAt`,
 `accountingRef` (the id the accounting system returned) and `accountingError` (the last
 failed send, kept so the accountant can fix and retry). Purchase invoices are shared by the
@@ -216,10 +236,12 @@ global env vars, not per organization. Things to know about its API, and how
 
 - **Rial only.** Invoices that aren't in IRR, or have no vendor or date, are refused before
   calling ASR.
-- **The total is the sum of the lines.** There is no discount or tax field. Tax is sent as an
-  extra line ("مالیات و عوارض ارزش افزوده") when lines + tax match the total. If the lines
-  still don't add up to the invoice total (within 1 Rial) — typically a discount — the send
-  is refused with a message asking the accountant to correct the lines or the total.
+- **ASR doesn't recalculate amounts.** We send `subTotal` = sum of the line totals,
+  `discount` = the invoice's `discountAmount` (0 when none) and `total` = subTotal − discount.
+  There is no tax field: tax is sent as an extra line ("مالیات و عوارض ارزش افزوده") when
+  lines − discount + tax match the total. If the result is more than 1 Rial off the invoice
+  total, the send is refused with a message asking the accountant to correct the lines, the
+  discount or the total.
 - **No duplicate check** on ASR's side: every successful call creates a new draft. We only
   send an invoice once (status `SENT`); after a timeout, check in ASR before retrying.
 - A business failure comes back as HTTP 200 with `succeed: false`; its message is shown to
@@ -228,7 +250,12 @@ global env vars, not per organization. Things to know about its API, and how
   description 100 characters). More than 999 lines is refused.
 - The ASR address is plain HTTP for now, so call it only from a trusted network.
 
-Tests: `test/asr-connector.test.ts` (mapping and HTTP behaviour, with `fetch` mocked — no
+ASR's `GET /api/partner/exchange-rates` (same key) also backs the `FREE_MARKET` currency
+converter (`src/currency/connectors/free-market.ts`): rows with base IRR read "1 quote = rate
+IRR"; other pairs are crossed through Rial. It has only the latest rates (USD, EUR, CNY
+today), so the invoice date is ignored; the response is cached for 5 minutes.
+
+Tests: `test/asr-connector.test.ts`, `test/free-market.test.ts` (mapping and HTTP behaviour, with `fetch` mocked — no
 real calls to ASR).
 
 ## Raw-material pricing

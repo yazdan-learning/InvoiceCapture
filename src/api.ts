@@ -144,6 +144,7 @@ export type UpdateExpensePayload = Partial<{
   customerName: string | null;
   customerAddress: string | null;
   subtotal: number | null;
+  discountAmount: number | null;
   taxRate: number | null;
   taxAmount: number | null;
   totalAmount: number | null;

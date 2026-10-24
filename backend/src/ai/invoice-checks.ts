@@ -28,6 +28,20 @@ const TOLERANCE_CENTS = 2;
 // something bought.
 const SUMMARY_LINE = /^\s*(zwischen)?summe\b|^\s*(sub)?total\b|^\s*gesamt(betrag|summe)?\b|^\s*(karten|bar)zahlung\b|^\s*(r[uü]ck|wechsel)geld\b|^\s*gegeben\b|^\s*(mwst|ust)\b|^\s*(جمع|تخفیف|مالیات|عوارض|ارزش افزوده|مبلغ (قابل )?پرداخت|مبلغ کل به ?حروف)/i;
 
+const TAX_LINE = /^\s*(mwst|ust|vat|tax\b|مالیات|عوارض|ارزش افزوده)/i;
+
+/**
+ * Some receipts (a courier's list of charges) print VAT among the charges, and
+ * the model lists it as an item although it is also the taxAmount: that line
+ * is dropped, so the lines plus tax add up to the total again.
+ */
+export function withoutTaxLine(data: ExtractedInvoiceData): ExtractedInvoiceData {
+  const tax = cents(data.taxAmount);
+  if (!tax) return data;
+  const taxLines = data.items.filter((line) => TAX_LINE.test(line.description) && Math.abs((lineCents(line) ?? 0) - tax) <= TOLERANCE_CENTS);
+  return taxLines.length === 1 ? { ...data, items: data.items.filter((line) => line !== taxLines[0]) } : data;
+}
+
 const cents = (v: number | null | undefined) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 100) : null);
 const euros = (c: number) => (c / 100).toFixed(2);
 

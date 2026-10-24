@@ -39,6 +39,7 @@ describe('calendars', () => {
     const persian = getCalendar('persian');
     expect(persian.toIsoDate('1405/07/26')).toBe('2026-10-18');
     expect(persian.toIsoDate('2026-10-18')).toBe('2026-10-18');
+    expect(persian.toIsoDate('2026/10/19')).toBe('2026-10-19');
     expect(persian.toIsoDate('1405/13/01')).toBeNull();
   });
 

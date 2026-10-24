@@ -2,8 +2,9 @@ import { AccountingConnector, AccountingInvoice, SentInvoice } from '../ports';
 
 // ASR's partner API (POST /api/partner/manual-invoice): the invoice is created
 // there as a Draft in Rial, and ASR staff confirm it. ASR doesn't recalculate
-// anything: its total is the sum of the line totals, with no discount or tax
-// fields, so the lines sent here must add up to the invoice total.
+// anything: subTotal must be the sum of the line totals and total must be
+// subTotal − discount, so the amounts sent here are checked against the
+// invoice first. There is no tax field: VAT is sent as a line of its own.
 // ASR has no duplicate check either: every successful call is a new invoice.
 
 export type AsrConfig = { baseUrl: string; apiKey: string; timeoutMs: number };
@@ -15,6 +16,9 @@ export type AsrManualInvoice = {
   title: string;
   invoiceDescription?: string;
   invoiceDate: string;
+  subTotal: number;
+  discount: number;
+  total: number;
   manualInvoiceDetailList: AsrLine[];
 };
 
@@ -46,22 +50,26 @@ export function toAsrInvoice(invoice: AccountingInvoice): AsrManualInvoice {
     return { itemDesc: cut(description, LIMITS.itemDesc), unitPrice: round3(unitPrice), measure: round3(measure), total: round3(unitPrice * measure) };
   });
   const tax = invoice.taxAmount ?? 0;
+  const discount = round3(invoice.discountAmount ?? 0);
   if (lines.length === 0) {
-    // No lines read: one line for the amount before tax (the tax line follows).
-    const net = invoice.subtotal ?? invoice.totalAmount - tax;
+    // No lines read: one line for the amount before discount and tax (the tax line follows).
+    const net = round3(invoice.subtotal ?? invoice.totalAmount + discount - tax);
     lines.push({ itemDesc: cut(invoice.notes?.trim() || 'اقلام فاکتور', LIMITS.itemDesc), unitPrice: net, measure: 1, total: net });
   }
 
-  const sum = (rows: { total: number }[]) => rows.reduce((total, row) => total + row.total, 0);
+  const sum = (rows: { total: number }[]) => round3(rows.reduce((total, row) => total + row.total, 0));
   // VAT printed under the lines becomes a line of its own, since ASR has no tax
   // field; when the lines already include it, nothing is added.
-  if (tax > 0 && Math.abs(sum(lines) + tax - invoice.totalAmount) <= TOLERANCE) {
+  if (tax > 0 && Math.abs(sum(lines) - discount + tax - invoice.totalAmount) <= TOLERANCE) {
     lines.push({ itemDesc: 'مالیات و عوارض ارزش افزوده', unitPrice: round3(tax), measure: 1, total: round3(tax) });
   }
-  if (Math.abs(sum(lines) - invoice.totalAmount) > TOLERANCE) {
+  const subTotal = sum(lines);
+  const total = round3(subTotal - discount);
+  if (Math.abs(total - invoice.totalAmount) > TOLERANCE) {
+    const afterDiscount = discount ? ` minus the discount of ${formatRial(discount)} is ${formatRial(total)},` : '';
     throw new Error(
-      `The lines add up to ${formatRial(sum(lines))} but the invoice total is ${formatRial(invoice.totalAmount)}. ` +
-        'ASR takes the sum of the lines as the total and has no discount field, so correct the lines or the total first'
+      `The lines add up to ${formatRial(subTotal)},${afterDiscount} but the invoice total is ${formatRial(invoice.totalAmount)}. ` +
+        'ASR saves these amounts as they are, so correct the lines, the discount or the total first'
     );
   }
   if (lines.length > LIMITS.lines) throw new Error(`ASR accepts at most ${LIMITS.lines} lines`);
@@ -79,6 +87,9 @@ export function toAsrInvoice(invoice: AccountingInvoice): AsrManualInvoice {
     title: cut(invoice.invoiceNumber ? `فاکتور خرید ${invoice.invoiceNumber}` : `فاکتور خرید ${vendor}`, LIMITS.title),
     ...(description ? { invoiceDescription: cut(description, LIMITS.invoiceDescription) } : {}),
     invoiceDate: invoice.invoiceDate.toISOString().slice(0, 10),
+    subTotal,
+    discount,
+    total,
     manualInvoiceDetailList: lines.map((line, index) => ({ rowNumber: index + 1, ...line }))
   };
 }

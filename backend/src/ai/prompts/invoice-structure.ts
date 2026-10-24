@@ -32,7 +32,7 @@ const schema = (rules: InvoiceRules) => `{
   "currency": string|null,
   "paymentMethod": string|null,
   "paymentTerms": string|null,
-  "notes": string|null`;
+  "notes": string|null${rules.extraFields ?? ''}`;
 
 const SHARED_RULES = `Rules:
 - Normalize Gregorian dates to YYYY-MM-DD; if missing, set null.
@@ -60,11 +60,42 @@ const rulesFor = (rules: InvoiceRules) => (rules.promptRules ? `${SHARED_RULES}\
 
 export function invoiceStructurePrompt(ocrText: string, rules: InvoiceRules): string {
   return `You are an invoice parser. Given OCR text, emit ONLY valid, compact JSON (one line, no markdown fences, no explanation) with this schema:
+${schema(rules)},
+  "invoiceCount": number
+}
+${rulesFor(rules)}
+- invoiceCount = how many separate invoices or receipts the text contains: each has its own header, date and
+  total (a scanner app can put several in one file, even two side by side on one page). The pages of one
+  invoice count once. When it is more than 1, fill the other fields from the first invoice only.
+OCR text:
+${ocrText}`;
+}
+
+/** The split reading answers with every invoice of the file at once. */
+export const SPLIT_INVOICES = { ...EXTRACT_INVOICE, maxTokens: 16384 } as const;
+
+/**
+ * One file with several invoices (invoiceCount > 1 in the first reading): all
+ * of them at once, one object each, so every one can be saved on its own. With
+ * the page photos attached, they are read from the photos alone: OCR returns a
+ * page of several receipts photographed side by side as a picture, drops a
+ * column, or moves an amount to the wrong line, and the model follows its text.
+ */
+export function invoiceSplitPrompt(ocrText: string, count: number, rules: InvoiceRules, withPhotos = false): string {
+  const source = withPhotos
+    ? `The attached photos are the pages of one scanned file holding several separate invoices or receipts (at
+least ${count}; a page can hold several receipts side by side). Read every invoice from the photos, page by page.`
+    : `The OCR text below holds ${count} separate invoices or receipts, scanned into one
+file; two can sit side by side on one page (then the OCR prints them as the two columns of one table).`;
+  return `You are an invoice parser. ${source} Emit ONLY
+valid, compact JSON (one line, no markdown fences, no explanation): {"invoices": [ ... ]${rules.extraFields ?? ''}} with one
+object per invoice, in the order they appear (the fields after "invoices" are for the whole file), each with this schema:
 ${schema(rules)}
 }
 ${rulesFor(rules)}
-OCR text:
-${ocrText}`;
+- Never mix the lines, dates or amounts of two invoices: each object takes only what is printed on its own invoice.${
+    withPhotos ? '' : `\nOCR text:\n${ocrText}`
+  }`;
 }
 
 /**
@@ -94,7 +125,7 @@ change or invent a number just to make the sum match. Answer with the complete J
  */
 export function invoiceHandwrittenPrompt(rules: InvoiceRules & { handwriting: HandwritingRules }, today: string): string {
   return `You are an invoice parser. The attached photo is a HANDWRITTEN invoice, often a printed form filled in by
-hand. Read it from the photo and emit ONLY valid, compact JSON (one line, no markdown fences, no explanation) with
+hand (several photos are the pages of one scanned file; read the invoice from them). Read it from the photo and emit ONLY valid, compact JSON (one line, no markdown fences, no explanation) with
 this schema:
 ${schema(rules)},
   "totalInWords": string|null,
