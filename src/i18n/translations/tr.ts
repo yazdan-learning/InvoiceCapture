@@ -59,7 +59,8 @@ const tr: Translations = {
     pendingApproval: 'Onay bekliyor',
     approved: 'Onaylandı',
     rejected: 'Reddedildi',
-    failed: 'Başarısız'
+    failed: 'Başarısız',
+    sent: 'Gönderildi'
   },
 
   nav: {
@@ -72,7 +73,9 @@ const tr: Translations = {
     admin: 'Yönetici',
     users: 'Kullanıcılar',
     settings: 'Ayarlar',
-    add: 'Ekle'
+    add: 'Ekle',
+    invoices: 'Faturalar',
+    scan: 'Tara'
   },
 
   login: {
@@ -123,7 +126,9 @@ const tr: Translations = {
       'Bir fiş veya faturanın fotoğrafını çekin ya da yükleyin — ayrıntıları otomatik olarak çıkaracağız.',
     logMileageTitle: 'Kilometre kaydet',
     logMileageDesc:
-      'Bir seyahati mesafeye göre kaydedin veya başlangıç ve bitiş noktasını girin, mesafeyi biz hesaplayalım.'
+      'Bir seyahati mesafeye göre kaydedin veya başlangıç ve bitiş noktasını girin, mesafeyi biz hesaplayalım.',
+    purchaseInvoiceTitle: 'Alış faturası',
+    purchaseInvoiceDesc: 'Muhasebe sistemi için bir tedarikçi faturası tarayın.'
   },
 
   upload: {
@@ -183,7 +188,8 @@ const tr: Translations = {
     active: 'Aktif',
     deactivated: 'Devre dışı',
     confirmDeactivate: '{name} devre dışı bırakılsın mı? Artık giriş yapamayacak.',
-    deactivateFailed: 'Kullanıcı devre dışı bırakılamadı'
+    deactivateFailed: 'Kullanıcı devre dışı bırakılamadı',
+    roleAccountant: 'Muhasebeci'
   },
 
   adminSettings: {
@@ -208,7 +214,17 @@ const tr: Translations = {
     mileageRateInvalid: "0'dan büyük bir kilometre oranı girin.",
     mileageHint:
       'Kuruluştaki her kilometre giderine uygulanır — mesafe × (gidiş-dönüş ? 2 : 1) × bu oran. Zaten gönderilmiş giderler kaydedildikleri tutarı korur; bu yalnızca yeni ve düzenlenen giderleri etkiler.',
-    saveSettings: 'Ayarları kaydet'
+    saveSettings: 'Ayarları kaydet',
+    modulesSection: 'Modüller',
+    moduleEXPENSES: 'Masraflar',
+    moduleEXPENSESHint: 'Çalışanların fişleri ve yolculukları, yöneticileri tarafından onaylanır.',
+    modulePURCHASE_INVOICES: 'Alış faturaları',
+    modulePURCHASE_INVOICESHint: 'Muhasebeciler tarafından taranıp kontrol edilen ve ardından muhasebe sistemine gönderilen tedarikçi faturaları. Onay adımı yoktur.',
+    modulesRequired: 'En az bir modülü etkinleştirin.',
+    accountingSection: 'Muhasebe sistemi',
+    accountingSystem: 'Alış faturalarını gönder',
+    accountingHint: '“Muhasebeye gönder” kontrol edilen faturayı nereye oluşturur. “Yok” seçiliyse yalnızca gönderildi olarak işaretlenir.',
+    accountingNone: 'Yok'
   },
 
   review: {
@@ -275,6 +291,33 @@ const tr: Translations = {
   routeMap: {
     loadFailed: 'Harita yüklenemedi.',
     routeFailed: 'Bu güzergah haritada gösterilemedi.'
+  },
+
+  // ===== Purchase invoices (dashboard, list, review) =====
+  invoices: {
+    title: 'Faturalar',
+    subtitle: 'Kontrol edilmeyi bekleyen tedarikçi faturaları.',
+    scan: 'Fatura tara',
+    statToCheck: 'Kontrol edilecek',
+    statFailed: 'Okunamadı',
+    statSent: 'Muhasebeye gönderildi',
+    toCheck: 'Kontrol edilecek',
+    viewAll: 'Tüm faturalar →',
+    allDone: 'Tüm faturalar kontrol edildi',
+    allDoneHint: 'Bir sonraki geldiğinde tarayın.',
+    searchPlaceholder: 'Tedarikçi veya fatura numarası ara…',
+    loading: 'Faturalar yükleniyor…',
+    empty: 'Henüz fatura yok',
+    emptyHint: 'Başlamak için bir tedarikçi faturası tarayın.',
+    loadFailed: 'Faturalar yüklenemedi',
+    allInvoices: '← Tüm faturalar',
+    sendToAccounting: 'Muhasebeye gönder',
+    sendAndNext: 'Gönder ve sonraki',
+    sending: 'Gönderiliyor…',
+    sendFailed: 'Fatura gönderilemedi',
+    sentOn: '{date} tarihinde muhasebeye gönderildi',
+    sentReference: ' (referans {reference})',
+    lastSendFailed: 'Bu faturayı gönderme denemesi başarısız oldu: {error}'
   }
 };
 

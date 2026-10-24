@@ -43,6 +43,15 @@ export const env = {
     apiKey: process.env.MISTRAL_API_KEY || '',
     model: process.env.MISTRAL_OCR_MODEL || 'mistral-ocr-latest'
   },
+  // Accounting systems purchase invoices can be sent to (Settings → Accounting
+  // system). Only needed by the organizations that pick that system.
+  accounting: {
+    asr: {
+      baseUrl: process.env.ASR_BASE_URL || '',
+      apiKey: process.env.ASR_API_KEY || '',
+      timeoutMs: Number(process.env.ASR_TIMEOUT_MS ?? 30_000)
+    }
+  },
   uploadsDir: required('UPLOADS_DIR', './uploads'),
   corsOrigin: required('CORS_ORIGIN', 'http://localhost:5173'),
   jwtSecret: required('JWT_SECRET', 'dev-only-insecure-secret-change-me'),

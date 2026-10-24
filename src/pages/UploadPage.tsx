@@ -4,7 +4,8 @@ import { uploadReceipt } from '../api';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useCountry } from '../country/CountryContext';
 
-export function UploadPage() {
+/** Expense receipts by default; the purchase-invoice module reuses the page as its scanner. */
+export function UploadPage({ expenseType = 'RECEIPT' }: { expenseType?: 'RECEIPT' | 'PURCHASE_INVOICE' }) {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { country } = useCountry();
@@ -68,9 +69,10 @@ export function UploadPage() {
     setError(null);
 
     try {
-      const response = await uploadReceipt({ file, handwritten: handwritten && country.features.handwrittenInvoices });
+      const response = await uploadReceipt({ file, expenseType, handwritten: handwritten && country.features.handwrittenInvoices });
       if (response.data) {
-        navigate(`/expenses/${response.data.id}`, { state: { justUploaded: true } });
+        const base = expenseType === 'PURCHASE_INVOICE' ? '/invoices' : '/expenses';
+        navigate(`${base}/${response.data.id}`, { state: { justUploaded: true } });
       } else {
         throw new Error(response.message || t('upload.extractionFailed'));
       }

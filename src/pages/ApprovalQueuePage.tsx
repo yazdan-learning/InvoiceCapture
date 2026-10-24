@@ -5,15 +5,7 @@ import { Expense } from '../types';
 import { StatusPill } from '../components/StatusPill';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useCountry } from '../country/CountryContext';
-
-function formatAmount(amount: string | null, currency: string | null) {
-  if (!amount) return '—';
-  const formatted = Number(amount).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-  return currency ? `${formatted} ${currency}` : formatted;
-}
+import { formatAmount } from '../lib/money';
 
 function expenseLabel(expense: Expense, t: (key: string) => string): string {
   if (expense.expenseType === 'MILEAGE') {

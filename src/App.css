@@ -1543,7 +1543,8 @@ h1 {
   color: #1d4ed8;
 }
 
-.status-pill--approved {
+.status-pill--approved,
+.status-pill--sent {
   background: #ecfdf5;
   color: #047857;
 }
@@ -2413,4 +2414,92 @@ h1 {
   .invoice-cards {
     display: flex;
   }
+}
+
+/* Purchase invoices on the dashboard: three counters side by side, even on a
+   phone, and the scan button as the page's main action. */
+.dashboard-stats--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-module-title {
+  margin: 8px 0 0;
+  font-size: 18px;
+  color: #1e293b;
+}
+
+@media (max-width: 899px) {
+  .dashboard-stats--three {
+    gap: 8px;
+  }
+
+  .dashboard-stats--three .stat-card {
+    padding: 12px;
+  }
+
+  .dashboard-stats--three .stat-card-value {
+    font-size: 24px;
+  }
+
+  .dashboard-stats--three .stat-card-label {
+    font-size: 12px;
+  }
+
+  .scan-cta {
+    width: 100%;
+    justify-content: center;
+    padding: 16px;
+    font-size: 16px;
+  }
+}
+
+/* Line items on a phone (the review page shows a table on desktop). */
+.line-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.line-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.line-item:last-child {
+  border-bottom: none;
+}
+
+.line-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.line-item-description {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  overflow-wrap: anywhere;
+}
+
+.line-item-sub {
+  font-size: 12px;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.line-item-total {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }

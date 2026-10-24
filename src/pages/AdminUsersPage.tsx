@@ -3,6 +3,7 @@ import { createUser, deactivateUser, getUsers, updateUser } from '../api';
 import { Role, UserSummary } from '../types';
 import { useTranslation } from '../i18n/LanguageContext';
 import { Select } from '../components/Select';
+import { canApprove } from '../workspace/permissions';
 
 type FormState = {
   name: string;
@@ -38,7 +39,7 @@ export function AdminUsersPage() {
   const usersById = new Map(users.map((u) => [u.id, u]));
   // Only active users who can actually be routed to as an approver — matches
   // the backend guard in expenses.service.ts submitForApproval.
-  const possibleManagers = users.filter((u) => u.role !== 'EMPLOYEE' && u.active);
+  const possibleManagers = users.filter((u) => canApprove(u.role) && u.active);
 
   const startEdit = (user: UserSummary) => {
     setEditingUserId(user.id);
@@ -155,6 +156,7 @@ export function AdminUsersPage() {
                 options={[
                   { value: 'EMPLOYEE', label: t('adminUsers.roleEmployee') },
                   { value: 'APPROVER', label: t('adminUsers.roleApprover') },
+                  { value: 'ACCOUNTANT', label: t('adminUsers.roleAccountant') },
                   { value: 'ADMIN', label: t('adminUsers.roleAdmin') }
                 ]}
               />

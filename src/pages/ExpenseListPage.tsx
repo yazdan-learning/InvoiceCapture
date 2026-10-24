@@ -1,31 +1,73 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { downloadExpensesExport, listExpenses } from '../api';
-import { Expense, ExpenseStatus } from '../types';
+import { AppModule, Expense, ExpenseStatus } from '../types';
 import { StatusPill } from '../components/StatusPill';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useCountry } from '../country/CountryContext';
+import { formatAmount } from '../lib/money';
 
-const STATUS_TABS: { key: string; value: ExpenseStatus | 'ALL' }[] = [
-  { key: 'status.all', value: 'ALL' },
-  { key: 'status.toReview', value: 'EXTRACTED' },
-  { key: 'status.pendingApproval', value: 'SUBMITTED' },
-  { key: 'status.approved', value: 'APPROVED' },
-  { key: 'status.rejected', value: 'REJECTED' },
-  { key: 'status.failed', value: 'FAILED' }
-];
+type StatusTab = { key: string; value: ExpenseStatus | 'ALL' };
 
-const VALID_STATUSES = new Set(STATUS_TABS.map((t) => t.value));
+// One list page for both modules: what differs is the statuses a record goes
+// through, where it links, and the texts. Purchase invoices have no approval
+// and no category, and their export comes later (with the accounting connectors).
+const LIST_CONFIG: Record<
+  AppModule,
+  {
+    tabs: StatusTab[];
+    basePath: string;
+    addPath: string;
+    showCategory: boolean;
+    showExport: boolean;
+    text: { add: string; search: string; loading: string; empty: string; emptyHint: string; loadFailed: string };
+  }
+> = {
+  EXPENSES: {
+    tabs: [
+      { key: 'status.all', value: 'ALL' },
+      { key: 'status.toReview', value: 'EXTRACTED' },
+      { key: 'status.pendingApproval', value: 'SUBMITTED' },
+      { key: 'status.approved', value: 'APPROVED' },
+      { key: 'status.rejected', value: 'REJECTED' },
+      { key: 'status.failed', value: 'FAILED' }
+    ],
+    basePath: '/expenses',
+    addPath: '/upload',
+    showCategory: true,
+    showExport: true,
+    text: {
+      add: 'expenseList.addExpense',
+      search: 'expenseList.searchPlaceholder',
+      loading: 'expenseList.loading',
+      empty: 'expenseList.empty',
+      emptyHint: 'expenseList.emptyHint',
+      loadFailed: 'expenseList.loadFailed'
+    }
+  },
+  PURCHASE_INVOICES: {
+    tabs: [
+      { key: 'status.all', value: 'ALL' },
+      { key: 'invoices.toCheck', value: 'EXTRACTED' },
+      { key: 'status.sent', value: 'SENT' },
+      { key: 'status.failed', value: 'FAILED' }
+    ],
+    basePath: '/invoices',
+    addPath: '/invoices/upload',
+    showCategory: false,
+    showExport: false,
+    text: {
+      add: 'invoices.scan',
+      search: 'invoices.searchPlaceholder',
+      loading: 'invoices.loading',
+      empty: 'invoices.empty',
+      emptyHint: 'invoices.emptyHint',
+      loadFailed: 'invoices.loadFailed'
+    }
+  }
+};
+
 const PAGE_SIZE = 20;
-
-function formatAmount(amount: string | null, currency: string | null) {
-  if (!amount) return '—';
-  const formatted = Number(amount).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-  return currency ? `${formatted} ${currency}` : formatted;
-}
 
 function expenseLabel(expense: Expense, t: (key: string) => string): string {
   if (expense.expenseType === 'MILEAGE') {
@@ -40,7 +82,8 @@ function expenseDate(expense: Expense): string | null {
   return expense.expenseType === 'MILEAGE' ? expense.mileageDate : expense.invoiceDate;
 }
 
-export function ExpenseListPage() {
+export function ExpenseListPage({ module = 'EXPENSES' }: { module?: AppModule }) {
+  const config = LIST_CONFIG[module];
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { formatDate } = useCountry();
@@ -50,7 +93,7 @@ export function ExpenseListPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<ExpenseStatus | 'ALL'>(
-    initialStatus && VALID_STATUSES.has(initialStatus as ExpenseStatus) ? (initialStatus as ExpenseStatus) : 'ALL'
+    config.tabs.find((tab) => tab.value === initialStatus)?.value ?? 'ALL'
   );
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -62,6 +105,7 @@ export function ExpenseListPage() {
     setError(null);
     try {
       const result = await listExpenses({
+        module,
         status: statusFilter === 'ALL' ? undefined : statusFilter,
         search: search || undefined,
         page,
@@ -70,11 +114,11 @@ export function ExpenseListPage() {
       setExpenses(result.expenses);
       setTotal(result.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('expenseList.loadFailed'));
+      setError(err instanceof Error ? err.message : t(config.text.loadFailed));
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, search, page]);
+  }, [module, statusFilter, search, page]);
 
   useEffect(() => {
     load();
@@ -102,12 +146,12 @@ export function ExpenseListPage() {
         <input
           type="search"
           className="search-input"
-          placeholder={t('expenseList.searchPlaceholder')}
+          placeholder={t(config.text.search)}
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
         />
         <div className="status-tabs">
-          {STATUS_TABS.map((tab) => (
+          {config.tabs.map((tab) => (
             <button
               key={tab.value}
               type="button"
@@ -119,19 +163,21 @@ export function ExpenseListPage() {
           ))}
         </div>
         <div className="list-actions">
-          <button
-            className="button-outline"
-            type="button"
-            onClick={() =>
-              downloadExpensesExport(statusFilter === 'ALL' ? undefined : statusFilter).catch((err) =>
-                setError(err instanceof Error ? err.message : t('expenseList.exportFailed'))
-              )
-            }
-          >
-            {t('expenseList.exportCsv')}
-          </button>
-          <Link className="button-primary" to="/upload">
-            {t('expenseList.addExpense')}
+          {config.showExport && (
+            <button
+              className="button-outline"
+              type="button"
+              onClick={() =>
+                downloadExpensesExport(statusFilter === 'ALL' ? undefined : statusFilter).catch((err) =>
+                  setError(err instanceof Error ? err.message : t('expenseList.exportFailed'))
+                )
+              }
+            >
+              {t('expenseList.exportCsv')}
+            </button>
+          )}
+          <Link className="button-primary" to={config.addPath}>
+            {t(config.text.add)}
           </Link>
         </div>
       </div>
@@ -143,13 +189,13 @@ export function ExpenseListPage() {
       )}
 
       {loading ? (
-        <div className="list-loading">{t('expenseList.loading')}</div>
+        <div className="list-loading">{t(config.text.loading)}</div>
       ) : expenses.length === 0 ? (
         <div className="empty-state">
-          <h3>{t('expenseList.empty')}</h3>
-          <p>{t('expenseList.emptyHint')}</p>
-          <Link className="button-primary" to="/upload">
-            {t('expenseList.addExpense')}
+          <h3>{t(config.text.empty)}</h3>
+          <p>{t(config.text.emptyHint)}</p>
+          <Link className="button-primary" to={config.addPath}>
+            {t(config.text.add)}
           </Link>
         </div>
       ) : (
@@ -160,7 +206,7 @@ export function ExpenseListPage() {
                 <col className="col-vendor" />
                 <col className="col-invoice-num" />
                 <col className="col-date" />
-                <col className="col-category" />
+                {config.showCategory && <col className="col-category" />}
                 <col className="col-amount" />
                 <col className="col-status" />
               </colgroup>
@@ -169,14 +215,14 @@ export function ExpenseListPage() {
                   <th>{t('table.vendor')}</th>
                   <th>{t('table.invoiceNumber')}</th>
                   <th>{t('table.date')}</th>
-                  <th>{t('table.category')}</th>
+                  {config.showCategory && <th>{t('table.category')}</th>}
                   <th className="align-right">{t('table.amount')}</th>
                   <th>{t('table.status')}</th>
                 </tr>
               </thead>
               <tbody>
                 {expenses.map((expense) => (
-                  <tr key={expense.id} onClick={() => navigate(`/expenses/${expense.id}`)}>
+                  <tr key={expense.id} onClick={() => navigate(`${config.basePath}/${expense.id}`)}>
                     <td>
                       <span className="vendor-cell">
                         <span className="vendor-name" title={expenseLabel(expense, t)}>
@@ -191,7 +237,7 @@ export function ExpenseListPage() {
                     </td>
                     <td>{expense.expenseType === 'MILEAGE' ? '—' : expense.invoiceNumber || '—'}</td>
                     <td>{formatDate(expenseDate(expense))}</td>
-                    <td>{expense.category?.name || '—'}</td>
+                    {config.showCategory && <td>{expense.category?.name || '—'}</td>}
                     <td className="align-right amount-cell">{formatAmount(expense.totalAmount, expense.currency)}</td>
                     <td>
                       <StatusPill status={expense.status} />
@@ -204,7 +250,7 @@ export function ExpenseListPage() {
 
           <div className="invoice-cards">
             {expenses.map((expense) => (
-              <div key={expense.id} className="invoice-card" onClick={() => navigate(`/expenses/${expense.id}`)}>
+              <div key={expense.id} className="invoice-card" onClick={() => navigate(`${config.basePath}/${expense.id}`)}>
                 <div className="invoice-card-top">
                   <span className="invoice-card-vendor">{expenseLabel(expense, t)}</span>
                   <StatusPill status={expense.status} />

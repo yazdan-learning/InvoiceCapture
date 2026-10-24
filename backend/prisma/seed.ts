@@ -44,6 +44,20 @@ async function main() {
     }
   });
 
+  // Captures and sends purchase invoices once an admin enables that module in Settings.
+  await prisma.user.upsert({
+    where: { email: 'accountant@invoice-ocr.local' },
+    update: {},
+    create: {
+      organizationId: org.id,
+      email: 'accountant@invoice-ocr.local',
+      name: 'Default Accountant',
+      passwordHash,
+      role: 'ACCOUNTANT',
+      managerId: admin.id
+    }
+  });
+
   const defaultCategories = ['Office Supplies', 'Travel', 'Utilities', 'Software', 'Other'];
   for (const name of defaultCategories) {
     await prisma.category.upsert({
@@ -57,6 +71,7 @@ async function main() {
   console.log(`Dev accounts (password: "${DEV_PASSWORD}"):`);
   console.log('  admin@invoice-ocr.local    (ADMIN, no manager)');
   console.log('  employee@invoice-ocr.local (EMPLOYEE, reports to admin)');
+  console.log('  accountant@invoice-ocr.local (ACCOUNTANT, reports to admin)');
 }
 
 main()

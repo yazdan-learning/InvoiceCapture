@@ -6,7 +6,7 @@ import { authRouter } from './auth/auth.routes';
 import { requireAuth, requireRole } from './auth/auth.middleware';
 import { expensesRouter } from './expenses/expenses.routes';
 import { categoriesRouter } from './categories/categories.routes';
-import { countryRouter, organizationRouter } from './organization/organization.routes';
+import { countryRouter, modulesRouter, organizationRouter } from './organization/organization.routes';
 import { AppError } from './shared/errors';
 
 export const app = express();
@@ -23,6 +23,7 @@ app.use('/api/expenses', requireAuth, expensesRouter);
 app.use('/api/categories', requireAuth, categoriesRouter);
 app.use('/api/organization', requireAuth, requireRole('ADMIN'), organizationRouter);
 app.use('/api/country', requireAuth, countryRouter);
+app.use('/api/modules', requireAuth, modulesRouter);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof AppError) {

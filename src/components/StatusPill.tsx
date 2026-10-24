@@ -8,7 +8,8 @@ const STATUS_CONFIG: Record<ExpenseStatus, { key: string; className: string }> =
   FAILED: { key: 'status.failed', className: 'status-pill--failed' },
   SUBMITTED: { key: 'status.pendingApproval', className: 'status-pill--submitted' },
   APPROVED: { key: 'status.approved', className: 'status-pill--approved' },
-  REJECTED: { key: 'status.rejected', className: 'status-pill--rejected' }
+  REJECTED: { key: 'status.rejected', className: 'status-pill--rejected' },
+  SENT: { key: 'status.sent', className: 'status-pill--sent' }
 };
 
 export function StatusPill({ status }: { status: ExpenseStatus }) {

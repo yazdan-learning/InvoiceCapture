@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "mock:server": "node mock-backend.js",
-    "test": "vitest run"
+    "test": "vitest run src"
   },
   "dependencies": {
     "cors": "^2.8.5",

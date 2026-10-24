@@ -63,7 +63,8 @@ const en = {
     pendingApproval: 'Pending approval',
     approved: 'Approved',
     rejected: 'Rejected',
-    failed: 'Failed'
+    failed: 'Failed',
+    sent: 'Sent'
   },
 
   // ===== Navigation (Sidebar + MobileNav + shared UserMenu) =====
@@ -77,7 +78,9 @@ const en = {
     admin: 'Admin',
     users: 'Users',
     settings: 'Settings',
-    add: 'Add'
+    add: 'Add',
+    invoices: 'Invoices',
+    scan: 'Scan'
   },
 
   // ===== Login =====
@@ -130,7 +133,9 @@ const en = {
     uploadReceiptTitle: 'Upload receipt',
     uploadReceiptDesc: "Snap or upload a photo of a receipt or invoice — we'll extract the details automatically.",
     logMileageTitle: 'Log mileage',
-    logMileageDesc: "Record a trip by distance, or enter a start and end location and we'll calculate it."
+    logMileageDesc: "Record a trip by distance, or enter a start and end location and we'll calculate it.",
+    purchaseInvoiceTitle: 'Purchase invoice',
+    purchaseInvoiceDesc: 'Scan a supplier invoice for the accounting system.'
   },
 
   // ===== Upload (receipt) =====
@@ -194,7 +199,8 @@ const en = {
     active: 'Active',
     deactivated: 'Deactivated',
     confirmDeactivate: 'Deactivate {name}? They will no longer be able to log in.',
-    deactivateFailed: 'Failed to deactivate user'
+    deactivateFailed: 'Failed to deactivate user',
+    roleAccountant: 'Accountant'
   },
 
   // ===== Admin: Settings =====
@@ -220,7 +226,17 @@ const en = {
     mileageRateInvalid: 'Enter a mileage rate greater than 0.',
     mileageHint:
       'Applied to every mileage expense across the organization — distance × (round trip ? 2 : 1) × this rate. Existing submitted expenses keep the total they were saved with; this only affects new and edited ones.',
-    saveSettings: 'Save settings'
+    saveSettings: 'Save settings',
+    modulesSection: 'Modules',
+    moduleEXPENSES: 'Expenses',
+    moduleEXPENSESHint: 'Employees\' receipts and mileage, approved by their manager.',
+    modulePURCHASE_INVOICES: 'Purchase invoices',
+    modulePURCHASE_INVOICESHint: 'Supplier invoices, scanned and checked by accountants, then sent to the accounting system. No approval step.',
+    modulesRequired: 'Enable at least one module.',
+    accountingSection: 'Accounting system',
+    accountingSystem: 'Send purchase invoices to',
+    accountingHint: 'Where “Send to accounting” creates the checked invoice. With “None” it is only marked as sent.',
+    accountingNone: 'None'
   },
 
   // ===== Expense review page =====
@@ -288,6 +304,33 @@ const en = {
   routeMap: {
     loadFailed: 'Could not load the map.',
     routeFailed: 'Could not show this route on the map.'
+  },
+
+  // ===== Purchase invoices (dashboard, list, review) =====
+  invoices: {
+    title: 'Invoices',
+    subtitle: 'Supplier invoices waiting to be checked.',
+    scan: 'Scan invoice',
+    statToCheck: 'To check',
+    statFailed: 'Could not be read',
+    statSent: 'Sent to accounting',
+    toCheck: 'To check',
+    viewAll: 'View all invoices →',
+    allDone: 'All invoices are checked',
+    allDoneHint: 'Scan the next one when it comes in.',
+    searchPlaceholder: 'Search supplier or invoice number…',
+    loading: 'Loading invoices…',
+    empty: 'No invoices yet',
+    emptyHint: 'Scan a supplier invoice to get started.',
+    loadFailed: 'Failed to load invoices',
+    allInvoices: '← All invoices',
+    sendToAccounting: 'Send to accounting',
+    sendAndNext: 'Send & next',
+    sending: 'Sending…',
+    sendFailed: 'Could not send the invoice',
+    sentOn: 'Sent to accounting on {date}',
+    sentReference: ' (reference {reference})',
+    lastSendFailed: 'The last attempt to send this invoice failed: {error}'
   }
 };
 

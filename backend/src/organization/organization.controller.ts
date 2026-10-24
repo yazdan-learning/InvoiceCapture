@@ -13,6 +13,10 @@ export function createOrganizationController(organizationService: OrganizationSe
       res.json(settings);
     },
 
+    async getModules(req: Request, res: Response) {
+      res.json(await organizationService.getModules(req.actor.organizationId));
+    },
+
     async getCountry(req: Request, res: Response) {
       const country = await organizationService.getCountry(req.actor.organizationId);
       res.json(country);

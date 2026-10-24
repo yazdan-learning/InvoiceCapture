@@ -30,14 +30,28 @@ model Organization {
   // are read — see backend/src/countries/registry.ts. "INTL" = no country-specific rules.
   country String @default("INTL")
 
+  // What the organization uses the app for (Settings → Modules): employee
+  // expenses, purchase invoices captured by the accountant, or both. At least one.
+  modules AppModule[] @default([EXPENSES])
+
+  // Where checked purchase invoices are sent — see backend/src/accounting/registry.ts.
+  // "NONE" = no accounting system connected: sending only marks them as sent.
+  accountingConnector String @default("NONE")
+
   users      User[]
   expenses   Expense[]
   categories Category[]
 }
 
+enum AppModule {
+  EXPENSES // employees' receipts and mileage, approved by their manager, reimbursed
+  PURCHASE_INVOICES // supplier invoices, checked by the accountant and sent to the accounting system
+}
+
 enum Role {
   EMPLOYEE
   APPROVER
+  ACCOUNTANT // captures and sends the organization's purchase invoices; no user or settings access
   ADMIN
 }
 
@@ -89,17 +103,21 @@ enum ExpenseStatus {
   SUBMITTED // sent to the submitter's manager for approval
   APPROVED
   REJECTED // sent back to the submitter, editable and re-submittable
+  SENT // purchase invoice handed to the accounting system (no approval step)
 }
 
-// RECEIPT is the only type v1 actually supports end to end (document capture
-// + OCR). MILEAGE/PER_DIEM/GENERAL are reserved here so adding them later is
-// a matter of using the field, not migrating the schema again — the vendor/
-// document fields below are already nullable for exactly this reason.
+// RECEIPT and MILEAGE are employee expenses; PURCHASE_INVOICE is a supplier
+// invoice (the PURCHASE_INVOICES module) — same capture, extraction and review,
+// but sent to accounting instead of approved. PER_DIEM/GENERAL are reserved
+// here so adding them later is a matter of using the field, not migrating the
+// schema again — the vendor/document fields below are already nullable for
+// exactly this reason.
 enum ExpenseType {
   RECEIPT
   MILEAGE
   PER_DIEM
   GENERAL
+  PURCHASE_INVOICE
 }
 
 model Expense {
@@ -159,6 +177,12 @@ model Expense {
 
   rawExtraction Json?
   errorMessage  String?
+
+  // Purchase invoices only: when it went to the accounting system, the id it
+  // got there (if the connector returns one), and why the last attempt failed.
+  sentToAccountingAt DateTime?
+  accountingRef      String?
+  accountingError    String?
 
   // Mileage — only populated for MILEAGE-type expenses. mileageDistanceKm is
   // always the one-way distance; totalAmount is always server-derived from

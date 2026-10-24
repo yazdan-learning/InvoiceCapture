@@ -1,21 +1,26 @@
+import { AppModule } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { UpdateOrganizationSettingsInput } from './organization.schema';
 
-const SETTINGS_SELECT = { mileageRatePerKm: true, defaultCurrency: true, defaultLanguage: true, country: true };
+const SETTINGS_SELECT = { mileageRatePerKm: true, defaultCurrency: true, defaultLanguage: true, country: true, modules: true, accountingConnector: true };
 
 export type OrganizationSettings = {
   mileageRatePerKm: number;
   defaultCurrency: string;
   defaultLanguage: string;
   country: string;
+  modules: AppModule[];
+  accountingConnector: string;
 };
 
-function toSettings(org: { mileageRatePerKm: unknown; defaultCurrency: string; defaultLanguage: string; country: string }): OrganizationSettings {
+function toSettings(org: Omit<OrganizationSettings, 'mileageRatePerKm'> & { mileageRatePerKm: unknown }): OrganizationSettings {
   return {
     mileageRatePerKm: Number(org.mileageRatePerKm),
     defaultCurrency: org.defaultCurrency,
     defaultLanguage: org.defaultLanguage,
-    country: org.country
+    country: org.country,
+    modules: org.modules,
+    accountingConnector: org.accountingConnector
   };
 }
 
@@ -35,7 +40,9 @@ export const organizationRepository = {
         ...(input.mileageRatePerKm !== undefined ? { mileageRatePerKm: input.mileageRatePerKm } : {}),
         ...(input.defaultCurrency !== undefined ? { defaultCurrency: input.defaultCurrency } : {}),
         ...(input.defaultLanguage !== undefined ? { defaultLanguage: input.defaultLanguage } : {}),
-        ...(input.country !== undefined ? { country: input.country } : {})
+        ...(input.country !== undefined ? { country: input.country } : {}),
+        ...(input.modules !== undefined ? { modules: input.modules } : {}),
+        ...(input.accountingConnector !== undefined ? { accountingConnector: input.accountingConnector } : {})
       },
       select: SETTINGS_SELECT
     });

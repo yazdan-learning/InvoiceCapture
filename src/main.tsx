@@ -5,6 +5,7 @@ import App from './App';
 import { AuthProvider } from './auth/AuthContext';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { CountryProvider } from './country/CountryContext';
+import { ModulesProvider } from './workspace/ModulesContext';
 import './App.css';
 
 const root = document.getElementById('root');
@@ -16,7 +17,9 @@ if (root) {
         <AuthProvider>
           <LanguageProvider>
             <CountryProvider>
-              <App />
+              <ModulesProvider>
+                <App />
+              </ModulesProvider>
             </CountryProvider>
           </LanguageProvider>
         </AuthProvider>

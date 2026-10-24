@@ -3,6 +3,8 @@ import { UpdateOrganizationSettingsInput } from './organization.schema';
 import { currenciesFor, getCountryProfile, listCountries, toClientProfile } from '../countries/registry';
 import { SUPPORTED_LANGUAGES } from '../shared/languages';
 import { BadRequestError } from '../shared/errors';
+import { APP_MODULES, MODULE_NAMES } from './modules';
+import { ACCOUNTING_CONNECTOR_IDS, ACCOUNTING_CONNECTOR_NAMES } from '../accounting/registry';
 
 export function createOrganizationService(repository: OrganizationRepository = organizationRepository) {
   return {
@@ -12,7 +14,9 @@ export function createOrganizationService(repository: OrganizationRepository = o
         ...settings,
         supportedCurrencies: currenciesFor(getCountryProfile(settings.country)),
         supportedLanguages: SUPPORTED_LANGUAGES,
-        supportedCountries: listCountries()
+        supportedCountries: listCountries(),
+        supportedModules: APP_MODULES.map((id) => ({ id, name: MODULE_NAMES[id] })),
+        supportedAccountingConnectors: ACCOUNTING_CONNECTOR_IDS.map((id) => ({ id, name: ACCOUNTING_CONNECTOR_NAMES[id] }))
       };
     },
 
@@ -35,6 +39,12 @@ export function createOrganizationService(repository: OrganizationRepository = o
     async getCountry(organizationId: string) {
       const { country } = await repository.get(organizationId);
       return toClientProfile(getCountryProfile(country));
+    },
+
+    /** Readable by every signed-in user: the menus and pages follow the enabled modules. */
+    async getModules(organizationId: string) {
+      const { modules } = await repository.get(organizationId);
+      return { modules };
     }
   };
 }

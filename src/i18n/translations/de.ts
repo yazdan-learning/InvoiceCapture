@@ -59,7 +59,8 @@ const de: Translations = {
     pendingApproval: 'Genehmigung ausstehend',
     approved: 'Genehmigt',
     rejected: 'Abgelehnt',
-    failed: 'Fehlgeschlagen'
+    failed: 'Fehlgeschlagen',
+    sent: 'Übermittelt'
   },
 
   nav: {
@@ -72,7 +73,9 @@ const de: Translations = {
     admin: 'Admin',
     users: 'Benutzer',
     settings: 'Einstellungen',
-    add: 'Hinzufügen'
+    add: 'Hinzufügen',
+    invoices: 'Rechnungen',
+    scan: 'Scannen'
   },
 
   login: {
@@ -123,7 +126,9 @@ const de: Translations = {
       'Fotografieren oder laden Sie einen Beleg oder eine Rechnung hoch — wir extrahieren die Details automatisch.',
     logMileageTitle: 'Fahrt erfassen',
     logMileageDesc:
-      'Erfassen Sie eine Fahrt anhand der Entfernung oder geben Sie Start- und Zielort ein — wir berechnen die Entfernung für Sie.'
+      'Erfassen Sie eine Fahrt anhand der Entfernung oder geben Sie Start- und Zielort ein — wir berechnen die Entfernung für Sie.',
+    purchaseInvoiceTitle: 'Eingangsrechnung',
+    purchaseInvoiceDesc: 'Eine Lieferantenrechnung für die Buchhaltung scannen.'
   },
 
   upload: {
@@ -183,7 +188,8 @@ const de: Translations = {
     active: 'Aktiv',
     deactivated: 'Deaktiviert',
     confirmDeactivate: 'Konto von {name} deaktivieren? Diese Person kann sich danach nicht mehr anmelden.',
-    deactivateFailed: 'Benutzer konnte nicht deaktiviert werden'
+    deactivateFailed: 'Benutzer konnte nicht deaktiviert werden',
+    roleAccountant: 'Buchhalter/in'
   },
 
   adminSettings: {
@@ -208,7 +214,17 @@ const de: Translations = {
     mileageRateInvalid: 'Geben Sie einen Kilometersatz größer als 0 ein.',
     mileageHint:
       'Wird auf jede Kilometergeld-Ausgabe der Organisation angewendet — Entfernung × (Hin- und Rückfahrt ? 2 : 1) × dieser Satz. Bereits eingereichte Ausgaben behalten den Betrag, mit dem sie gespeichert wurden; dies betrifft nur neue und bearbeitete Ausgaben.',
-    saveSettings: 'Einstellungen speichern'
+    saveSettings: 'Einstellungen speichern',
+    modulesSection: 'Module',
+    moduleEXPENSES: 'Spesen',
+    moduleEXPENSESHint: 'Belege und Fahrten der Mitarbeitenden, genehmigt von ihrer Führungskraft.',
+    modulePURCHASE_INVOICES: 'Eingangsrechnungen',
+    modulePURCHASE_INVOICESHint: 'Lieferantenrechnungen, von der Buchhaltung gescannt und geprüft und dann an das Buchhaltungssystem übermittelt. Ohne Genehmigungsschritt.',
+    modulesRequired: 'Aktivieren Sie mindestens ein Modul.',
+    accountingSection: 'Buchhaltungssystem',
+    accountingSystem: 'Eingangsrechnungen senden an',
+    accountingHint: 'Wohin „An Buchhaltung senden“ die geprüfte Rechnung überträgt. Bei „Keins“ wird sie nur als gesendet markiert.',
+    accountingNone: 'Keins'
   },
 
   review: {
@@ -275,6 +291,33 @@ const de: Translations = {
   routeMap: {
     loadFailed: 'Karte konnte nicht geladen werden.',
     routeFailed: 'Route konnte auf der Karte nicht angezeigt werden.'
+  },
+
+  // ===== Purchase invoices (dashboard, list, review) =====
+  invoices: {
+    title: 'Rechnungen',
+    subtitle: 'Lieferantenrechnungen, die auf Prüfung warten.',
+    scan: 'Rechnung scannen',
+    statToCheck: 'Zu prüfen',
+    statFailed: 'Nicht lesbar',
+    statSent: 'An Buchhaltung übermittelt',
+    toCheck: 'Zu prüfen',
+    viewAll: 'Alle Rechnungen →',
+    allDone: 'Alle Rechnungen sind geprüft',
+    allDoneHint: 'Scannen Sie die nächste, sobald sie eintrifft.',
+    searchPlaceholder: 'Lieferant oder Rechnungsnummer suchen…',
+    loading: 'Rechnungen werden geladen…',
+    empty: 'Noch keine Rechnungen',
+    emptyHint: 'Scannen Sie eine Lieferantenrechnung, um zu beginnen.',
+    loadFailed: 'Rechnungen konnten nicht geladen werden',
+    allInvoices: '← Alle Rechnungen',
+    sendToAccounting: 'An Buchhaltung übermitteln',
+    sendAndNext: 'Übermitteln & weiter',
+    sending: 'Wird übermittelt…',
+    sendFailed: 'Die Rechnung konnte nicht übermittelt werden',
+    sentOn: 'Am {date} an die Buchhaltung übermittelt',
+    sentReference: ' (Referenz {reference})',
+    lastSendFailed: 'Der letzte Übermittlungsversuch ist fehlgeschlagen: {error}'
   }
 };
 

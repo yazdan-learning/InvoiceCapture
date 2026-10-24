@@ -1,4 +1,4 @@
-import { AuthUser, Category, Expense, ExpenseStatus, ExtractResponse, Role, UserSummary } from './types';
+import { AppModule, AuthUser, Category, Expense, ExpenseStatus, ExtractResponse, Role, UserSummary } from './types';
 import { clearSession, getToken } from './auth/token-storage';
 
 export const defaultBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4300';
@@ -55,6 +55,8 @@ type UploadReceiptParams = {
   file: File;
   /** Read from the photo by the handwriting (vision) model. */
   handwritten?: boolean;
+  /** An employee's receipt (the default) or a purchase invoice for accounting. */
+  expenseType?: 'RECEIPT' | 'PURCHASE_INVOICE';
   apiBaseUrl?: string;
 };
 
@@ -63,10 +65,12 @@ type UploadReceiptParams = {
 export async function uploadReceipt({
   file,
   handwritten = false,
+  expenseType = 'RECEIPT',
   apiBaseUrl = defaultBaseUrl
 }: UploadReceiptParams): Promise<ExtractResponse> {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('expenseType', expenseType);
   if (handwritten) formData.append('handwritten', 'true');
 
   const response = await fetch(apiUrl('/api/expenses', apiBaseUrl), {
@@ -94,6 +98,8 @@ export async function uploadReceipt({
 }
 
 export type ListExpensesParams = {
+  /** The organization's purchase invoices instead of expenses. */
+  module?: AppModule;
   status?: ExpenseStatus;
   search?: string;
   page?: number;
@@ -111,6 +117,7 @@ export type ListExpensesResponse = {
 export async function listExpenses(params: ListExpensesParams = {}): Promise<ListExpensesResponse> {
   const { apiBaseUrl = defaultBaseUrl, ...query } = params;
   const search = new URLSearchParams();
+  if (query.module) search.set('module', query.module);
   if (query.status) search.set('status', query.status);
   if (query.search) search.set('search', query.search);
   if (query.page) search.set('page', String(query.page));
@@ -289,6 +296,15 @@ export async function submitExpense(id: string, apiBaseUrl = defaultBaseUrl): Pr
   return parseJsonOrThrow(response);
 }
 
+// Purchase invoices: hands the checked invoice to the accounting system (-> SENT).
+export async function sendInvoiceToAccounting(id: string, apiBaseUrl = defaultBaseUrl): Promise<Expense> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}/send`, apiBaseUrl), {
+    method: 'POST',
+    headers: authHeaders()
+  });
+  return parseJsonOrThrow(response);
+}
+
 export async function decideExpense(
   id: string,
   decision: 'approve' | 'reject',
@@ -371,9 +387,13 @@ export type OrganizationSettings = {
   defaultCurrency: string;
   defaultLanguage: string;
   country: string;
+  modules: AppModule[];
   supportedCurrencies: string[];
   supportedLanguages: string[];
   supportedCountries: CountryOption[];
+  supportedModules: { id: AppModule; name: string }[];
+  accountingConnector: string;
+  supportedAccountingConnectors: { id: string; name: string }[];
 };
 
 export type UpdateOrganizationSettingsPayload = Partial<{
@@ -381,6 +401,8 @@ export type UpdateOrganizationSettingsPayload = Partial<{
   defaultCurrency: string;
   defaultLanguage: string;
   country: string;
+  modules: AppModule[];
+  accountingConnector: string;
 }>;
 
 export type UpdatedOrganizationSettings = {
@@ -388,6 +410,8 @@ export type UpdatedOrganizationSettings = {
   defaultCurrency: string;
   defaultLanguage: string;
   country: string;
+  modules: AppModule[];
+  accountingConnector: string;
 };
 
 // What the UI adapts to for the organization's country (see backend/src/countries).
@@ -402,6 +426,12 @@ export type CountryProfile = {
 // Readable by every signed-in user, unlike the settings above.
 export async function getCountryProfile(apiBaseUrl = defaultBaseUrl): Promise<CountryProfile> {
   const response = await fetch(apiUrl('/api/country', apiBaseUrl), { headers: authHeaders() });
+  return parseJsonOrThrow(response);
+}
+
+// Readable by every signed-in user: menus and pages follow the enabled modules.
+export async function getModules(apiBaseUrl = defaultBaseUrl): Promise<{ modules: AppModule[] }> {
+  const response = await fetch(apiUrl('/api/modules', apiBaseUrl), { headers: authHeaders() });
   return parseJsonOrThrow(response);
 }
 

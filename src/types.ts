@@ -1,8 +1,12 @@
-export type ExpenseStatus = 'PENDING' | 'PROCESSING' | 'EXTRACTED' | 'FAILED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+// SENT: a purchase invoice handed to the accounting system (they have no approval step).
+export type ExpenseStatus = 'PENDING' | 'PROCESSING' | 'EXTRACTED' | 'FAILED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'SENT';
 
-export type ExpenseType = 'RECEIPT' | 'MILEAGE' | 'PER_DIEM' | 'GENERAL';
+export type ExpenseType = 'RECEIPT' | 'MILEAGE' | 'PER_DIEM' | 'GENERAL' | 'PURCHASE_INVOICE';
 
-export type Role = 'EMPLOYEE' | 'APPROVER' | 'ADMIN';
+export type Role = 'EMPLOYEE' | 'APPROVER' | 'ACCOUNTANT' | 'ADMIN';
+
+/** What the organization uses the app for (Settings → Modules). */
+export type AppModule = 'EXPENSES' | 'PURCHASE_INVOICES';
 
 export type AuthUser = {
   id: string;
@@ -40,8 +44,8 @@ export type Approval = {
 
 // Mirrors the backend's Expense model (backend/prisma/schema.prisma). Numeric
 // money fields come back as strings — Prisma serializes Decimal via toJSON().
-// expenseType "RECEIPT" and "MILEAGE" are fully supported in the UI; PER_DIEM
-// and GENERAL are reserved on the model for later.
+// expenseType "RECEIPT", "MILEAGE" and "PURCHASE_INVOICE" are fully supported
+// in the UI; PER_DIEM and GENERAL are reserved on the model for later.
 export type Expense = {
   id: string;
   status: ExpenseStatus;
@@ -76,6 +80,10 @@ export type Expense = {
   isDuplicate: boolean;
   duplicateOfId: string | null;
   errorMessage: string | null;
+  // Purchase invoices only.
+  sentToAccountingAt: string | null;
+  accountingRef: string | null;
+  accountingError: string | null;
   mileageDate: string | null;
   mileageFrom: string | null;
   mileageTo: string | null;

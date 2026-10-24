@@ -9,6 +9,7 @@ import { isGoogleMapsConfigured } from '../lib/googleMaps';
 import { useTranslation } from '../i18n/LanguageContext';
 import { DateInput } from '../components/DateInput';
 import { useIsDesktop } from '../hooks/useIsDesktop';
+import { formatAmount } from '../lib/money';
 
 function todayInputValue(): string {
   return new Date().toISOString().slice(0, 10);
@@ -224,7 +225,7 @@ export function MileageEntryPage() {
             <span className="estimated-total">
               <span className="estimated-total-label">{t('common.amount')}</span>
               <span className="estimated-total-value">
-                {estimatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {formatAmount(estimatedAmount, null)}
               </span>
             </span>
           )}

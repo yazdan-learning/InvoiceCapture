@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom';
 import { AuthUser } from '../types';
 import { useTranslation } from '../i18n/LanguageContext';
-import { IconAdmin, IconApprovals, IconDashboard, IconExpenses, IconLogout, IconSettings } from './icons';
+import { useModules } from '../workspace/ModulesContext';
+import { navItemsFor } from '../workspace/navigation';
+import { NAV_ICONS, NAV_LABELS } from './nav-icons';
+import { IconAdmin, IconLogout, IconSettings } from './icons';
 
 type SidebarProps = {
   user: AuthUser;
@@ -11,8 +14,7 @@ type SidebarProps = {
 
 export function Sidebar({ user, currentPath, onLogout }: SidebarProps) {
   const { t } = useTranslation();
-  const isExpensesActive =
-    currentPath === '/expenses' || currentPath.startsWith('/expenses/') || currentPath.startsWith('/upload');
+  const { modules } = useModules();
 
   return (
     <aside className="sidebar">
@@ -28,25 +30,24 @@ export function Sidebar({ user, currentPath, onLogout }: SidebarProps) {
         </svg>
         <div>
           <div className="sidebar-brand-title">{t('nav.brand')}</div>
-          <div className="sidebar-brand-sub">{t('nav.brandSub')}</div>
+          <div className="sidebar-brand-sub">{modules.includes('EXPENSES') ? t('nav.brandSub') : t('invoices.title')}</div>
         </div>
       </div>
 
       <nav className="sidebar-nav">
-        <Link to="/" className={`sidebar-link ${currentPath === '/' ? 'sidebar-link--active' : ''}`}>
-          <IconDashboard className="sidebar-link-icon" />
-          {t('nav.dashboard')}
-        </Link>
-        <Link to="/expenses" className={`sidebar-link ${isExpensesActive ? 'sidebar-link--active' : ''}`}>
-          <IconExpenses className="sidebar-link-icon" />
-          {t('nav.expenses')}
-        </Link>
-        {user.role !== 'EMPLOYEE' && (
-          <Link to="/approvals" className={`sidebar-link ${currentPath === '/approvals' ? 'sidebar-link--active' : ''}`}>
-            <IconApprovals className="sidebar-link-icon" />
-            {t('nav.approvals')}
-          </Link>
-        )}
+        {navItemsFor(user.role, modules).map((item) => {
+          const Icon = NAV_ICONS[item.id];
+          return (
+            <Link
+              key={item.id}
+              to={item.to}
+              className={`sidebar-link ${item.isActive(currentPath) ? 'sidebar-link--active' : ''}`}
+            >
+              <Icon className="sidebar-link-icon" />
+              {t(NAV_LABELS[item.id])}
+            </Link>
+          );
+        })}
       </nav>
 
       {user.role === 'ADMIN' && (

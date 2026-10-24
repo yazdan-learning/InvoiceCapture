@@ -2,18 +2,18 @@ import { Request, Response } from 'express';
 import { ExpenseStatus } from '@prisma/client';
 import { ExpensesService } from './expenses.service';
 import { BadRequestError } from '../shared/errors';
+import { ListExpensesQuery } from './expenses.schema';
 
 export function createExpensesController(expensesService: ExpensesService) {
   return {
     async upload(req: Request, res: Response) {
       if (!req.file) throw new BadRequestError('No file uploaded (expected field name: file)');
-      const expense = await expensesService.uploadAndExtract(
-        req.actor.organizationId,
-        req.actor.userId,
-        req.file,
-        // multipart form field: "true" when the user ticked "handwritten"
-        { handwritten: req.body?.handwritten === 'true' }
-      );
+      const expense = await expensesService.uploadAndExtract(req.actor.organizationId, req.actor, req.file, {
+        // multipart form fields: "true" when the user ticked "handwritten"; the
+        // kind of document (a purchase invoice, or by default an expense receipt)
+        handwritten: req.body?.handwritten === 'true',
+        expenseType: req.body?.expenseType === 'PURCHASE_INVOICE' ? 'PURCHASE_INVOICE' : 'RECEIPT'
+      });
       res.status(201).json(expense);
     },
 
@@ -48,12 +48,7 @@ export function createExpensesController(expensesService: ExpensesService) {
     },
 
     async list(req: Request, res: Response) {
-      const query = req.query as unknown as {
-        status?: ExpenseStatus;
-        search?: string;
-        page: number;
-        pageSize: number;
-      };
+      const query = req.query as unknown as ListExpensesQuery;
       const result = await expensesService.list(req.actor.organizationId, query, req.actor);
       res.json(result);
     },
@@ -94,6 +89,11 @@ export function createExpensesController(expensesService: ExpensesService) {
     async submit(req: Request, res: Response) {
       const expense = await expensesService.submitForApproval(req.actor.organizationId, req.params.id, req.actor);
       res.json(expense);
+    },
+
+    async sendToAccounting(req: Request, res: Response) {
+      const invoice = await expensesService.sendToAccounting(req.actor.organizationId, req.params.id, req.actor);
+      res.json(invoice);
     },
 
     async approve(req: Request, res: Response) {

@@ -4,7 +4,7 @@ import { OrganizationRepository, OrganizationSettings } from '../src/organizatio
 import { BadRequestError } from '../src/shared/errors';
 
 function fakeRepository(settings: Partial<OrganizationSettings> = {}) {
-  const current: OrganizationSettings = { mileageRatePerKm: 0.3, defaultCurrency: 'EUR', defaultLanguage: 'en', country: 'INTL', ...settings };
+  const current: OrganizationSettings = { mileageRatePerKm: 0.3, defaultCurrency: 'EUR', defaultLanguage: 'en', country: 'INTL', modules: ['EXPENSES'], accountingConnector: 'NONE', ...settings };
   return {
     get: vi.fn(async () => current),
     updateSettings: vi.fn(async (_id: string, input: Partial<OrganizationSettings>) => ({ ...current, ...input }))
@@ -37,6 +37,12 @@ describe('organization settings', () => {
     await expect(createOrganizationService(repository).updateSettings('org', { country: 'INTL' })).rejects.toThrow(
       'IRR is not available for International'
     );
+  });
+
+  it('gives every user the enabled modules', async () => {
+    const service = createOrganizationService(fakeRepository({ modules: ['PURCHASE_INVOICES'] }));
+    expect(await service.getModules('org')).toEqual({ modules: ['PURCHASE_INVOICES'] });
+    expect((await service.getSettings('org')).supportedModules.map((m) => m.id)).toEqual(['EXPENSES', 'PURCHASE_INVOICES']);
   });
 
   it('gives every user the client profile of the country', async () => {

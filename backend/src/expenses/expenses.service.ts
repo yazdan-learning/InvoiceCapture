@@ -1,9 +1,13 @@
 import { randomUUID } from 'crypto';
-import { ExpenseStatus, Prisma } from '@prisma/client';
-import { NotFoundError, BadRequestError } from '../shared/errors';
+import { AppModule, ExpenseStatus, ExpenseType, Prisma, Role } from '@prisma/client';
+import { NotFoundError, BadRequestError, ForbiddenError } from '../shared/errors';
 import { toCsv } from '../shared/csv';
 import { SUPPORTED_LANGUAGES } from '../shared/languages';
 import { currenciesFor, getCountryProfile } from '../countries/registry';
+import { canApprove, canHandlePurchaseInvoices } from '../auth/permissions';
+import { MODULE_NAMES, moduleOf } from '../organization/modules';
+import { AccountingConnector, AccountingInvoice } from '../accounting/ports';
+import { getAccountingConnector } from '../accounting/registry';
 import { expensesRepository as prismaExpensesRepository, ExpensesRepository, LineItemInput } from './expenses.repository';
 import {
   ApproverResolver,
@@ -22,11 +26,16 @@ function toDate(value: string | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export type Actor = { userId: string; role: 'EMPLOYEE' | 'APPROVER' | 'ADMIN' };
+export type Actor = { userId: string; role: Role };
 
-// Admins see everything in the org; everyone else only sees expenses they
-// submitted, or ones routed to them as an approver (current or past step).
-function canView(expense: { uploadedBy: string; approvals: { approverId: string }[] }, actor: Actor): boolean {
+type AccessCheck = { expenseType: ExpenseType; uploadedBy: string; approvals: { approverId: string }[] };
+
+// Purchase invoices are the organization's, not one person's: every
+// accountant (and admin) sees and edits all of them. For expenses, admins see
+// everything in the org; everyone else only sees expenses they submitted, or
+// ones routed to them as an approver (current or past step).
+function canView(expense: AccessCheck, actor: Actor): boolean {
+  if (expense.expenseType === 'PURCHASE_INVOICE') return canHandlePurchaseInvoices(actor.role);
   if (actor.role === 'ADMIN') return true;
   if (expense.uploadedBy === actor.userId) return true;
   return expense.approvals.some((a) => a.approverId === actor.userId);
@@ -34,9 +43,15 @@ function canView(expense: { uploadedBy: string; approvals: { approverId: string 
 
 // Only the submitter (or an admin) may edit or submit — an approver reviews,
 // they don't get to change the numbers they're approving.
-function canEdit(expense: { uploadedBy: string }, actor: Actor): boolean {
+function canEdit(expense: Omit<AccessCheck, 'approvals'>, actor: Actor): boolean {
+  if (expense.expenseType === 'PURCHASE_INVOICE') return canHandlePurchaseInvoices(actor.role);
   return actor.role === 'ADMIN' || expense.uploadedBy === actor.userId;
 }
+
+const num = (value: Prisma.Decimal | null): number | null => (value == null ? null : Number(value));
+
+/** What there is to upload: an employee's receipt, or a purchase invoice for the accountant. */
+export type UploadOptions = Omit<ExtractOptions, 'country'> & { expenseType?: 'RECEIPT' | 'PURCHASE_INVOICE' };
 
 type Deps = {
   extractor: InvoiceExtractor;
@@ -46,6 +61,8 @@ type Deps = {
   currencyConverter: CurrencyConverter;
   /** Prisma by default; tests pass a fake. */
   expensesRepository?: ExpensesRepository;
+  /** The organization's accounting system, by its connector id (see accounting/registry.ts). */
+  accountingConnectorFor?: (id: string) => AccountingConnector;
 };
 
 // mileageDistanceKm always stores the one-way distance; the round-trip factor
@@ -61,7 +78,8 @@ export function createExpensesService({
   approverResolver,
   distanceCalculator,
   currencyConverter,
-  expensesRepository = prismaExpensesRepository
+  expensesRepository = prismaExpensesRepository,
+  accountingConnectorFor = getAccountingConnector
 }: Deps) {
   // The calculator throws plain Errors (not set up, no route found, etc.) —
   // rethrow as BadRequestError so the real message reaches the client instead
@@ -74,8 +92,23 @@ export function createExpensesService({
     }
   }
 
+  // Switched off in Settings = refused here too, not only hidden in the UI.
+  async function requireModule(organizationId: string, module: AppModule) {
+    const modules = await expensesRepository.getOrganizationModules(organizationId);
+    if (!modules.includes(module)) throw new ForbiddenError(`${MODULE_NAMES[module]} are not enabled for your organization`);
+  }
+
+  async function requireInvoiceAccess(organizationId: string, actor: Actor) {
+    await requireModule(organizationId, 'PURCHASE_INVOICES');
+    if (!canHandlePurchaseInvoices(actor.role)) throw new ForbiddenError('Only accountants can handle purchase invoices');
+  }
+
   return {
-    async uploadAndExtract(organizationId: string, userId: string, file: UploadedFile, options: Omit<ExtractOptions, 'country'> = {}) {
+    async uploadAndExtract(organizationId: string, actor: Actor, file: UploadedFile, options: UploadOptions = {}) {
+      const { expenseType = 'RECEIPT', ...extractOptions } = options;
+      if (expenseType === 'PURCHASE_INVOICE') await requireInvoiceAccess(organizationId, actor);
+      else await requireModule(organizationId, 'EXPENSES');
+
       const expenseId = randomUUID();
       const relativePath = await fileStorage.save({ organizationId, expenseId, file });
 
@@ -86,7 +119,7 @@ export function createExpensesService({
       let extraction: Awaited<ReturnType<InvoiceExtractor['extract']>> | null = null;
       let errorMessage: string | null = null;
       try {
-        extraction = await extractor.extract(file, { ...options, country });
+        extraction = await extractor.extract(file, { ...extractOptions, country });
       } catch (err) {
         errorMessage = err instanceof Error ? err.message : 'Extraction failed';
       }
@@ -158,8 +191,8 @@ export function createExpensesService({
       return expensesRepository.create({
         id: expenseId,
         organizationId,
-        uploadedBy: userId,
-        expenseType: 'RECEIPT',
+        uploadedBy: actor.userId,
+        expenseType,
         filePath: relativePath,
         mimeType: file.mimetype,
         fileSizeB: file.size,
@@ -195,6 +228,7 @@ export function createExpensesService({
     },
 
     async createMileageExpense(organizationId: string, userId: string, input: CreateMileageInput) {
+      await requireModule(organizationId, 'EXPENSES');
       // Mileage never has a foreign-currency source to convert from — the
       // rate-per-km is already denominated in whatever the org's default
       // currency is, so the expense is simply tagged with it directly.
@@ -262,8 +296,11 @@ export function createExpensesService({
       };
     },
 
+    // Purchase invoices are shared by the accountants; expenses are each person's own (all of them for admins).
     async list(organizationId: string, filters: ListExpensesQuery, actor: Actor) {
-      const scoped = actor.role === 'ADMIN' ? filters : { ...filters, uploadedBy: actor.userId };
+      if (filters.module === 'PURCHASE_INVOICES') await requireInvoiceAccess(organizationId, actor);
+      const shared = filters.module === 'PURCHASE_INVOICES' || actor.role === 'ADMIN';
+      const scoped = shared ? filters : { ...filters, uploadedBy: actor.userId };
       const [expenses, total] = await expensesRepository.list(organizationId, scoped);
       return { expenses, total, page: filters.page, pageSize: filters.pageSize };
     },
@@ -290,6 +327,9 @@ export function createExpensesService({
       if (!existing || !canView(existing, actor)) throw new NotFoundError('Expense not found');
       if (!canEdit(existing, actor)) {
         throw new BadRequestError('Only the person who submitted this expense can edit it');
+      }
+      if (existing.status === 'SENT') {
+        throw new BadRequestError('This invoice has already been sent to accounting');
       }
 
       const { items, ...fields } = patch;
@@ -343,6 +383,9 @@ export function createExpensesService({
       if (!canEdit(expense, actor)) {
         throw new BadRequestError('Only the person who submitted this expense can submit it for approval');
       }
+      if (moduleOf(expense.expenseType) === 'PURCHASE_INVOICES') {
+        throw new BadRequestError('Purchase invoices are sent to accounting, not approved');
+      }
       if (!['EXTRACTED', 'FAILED', 'REJECTED'].includes(expense.status)) {
         throw new BadRequestError('This expense has already been submitted');
       }
@@ -359,7 +402,7 @@ export function createExpensesService({
         return expensesRepository.update(id, { status: 'APPROVED' });
       }
 
-      if (approver.role === 'EMPLOYEE') {
+      if (!canApprove(approver.role)) {
         throw new BadRequestError(
           "Your manager isn't set up as an approver yet. Ask an admin to update their role."
         );
@@ -386,6 +429,57 @@ export function createExpensesService({
 
       await expensesRepository.decideApproval(pending.id, decision, comment);
       return expensesRepository.update(id, { status: decision });
+    },
+
+    // The purchase-invoice counterpart of submitting: no approval step, the
+    // accountant who checked it hands it straight to the accounting system.
+    // A failed send is kept on the invoice (accountingError) so it can be retried.
+    async sendToAccounting(organizationId: string, id: string, actor: Actor) {
+      await requireInvoiceAccess(organizationId, actor);
+      const invoice = await expensesRepository.findById(organizationId, id);
+      if (!invoice || invoice.expenseType !== 'PURCHASE_INVOICE') throw new NotFoundError('Invoice not found');
+      if (!['EXTRACTED', 'FAILED'].includes(invoice.status)) {
+        throw new BadRequestError('This invoice has already been sent to accounting');
+      }
+      const totalAmount = num(invoice.totalAmount);
+      if (totalAmount == null) throw new BadRequestError('Cannot send without a total amount');
+
+      const connector = accountingConnectorFor(await expensesRepository.getOrganizationAccountingConnector(organizationId));
+      const payload: AccountingInvoice = {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        invoiceDate: invoice.invoiceDate,
+        dueDate: invoice.dueDate,
+        vendorName: invoice.vendorName,
+        vendorAddress: invoice.vendorAddress,
+        vendorTaxId: invoice.vendorTaxId,
+        subtotal: num(invoice.subtotal),
+        taxAmount: num(invoice.taxAmount),
+        totalAmount,
+        currency: invoice.currency,
+        notes: invoice.notes,
+        items: invoice.items.map((item) => ({
+          description: item.description,
+          quantity: num(item.quantity),
+          unitPrice: num(item.unitPrice),
+          totalPrice: num(item.totalPrice),
+          taxRate: num(item.taxRate)
+        }))
+      };
+
+      try {
+        const { reference } = await connector.send(payload);
+        return expensesRepository.update(id, {
+          status: 'SENT',
+          sentToAccountingAt: new Date(),
+          accountingRef: reference,
+          accountingError: null
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        await expensesRepository.update(id, { accountingError: message });
+        throw new BadRequestError(`Could not send the invoice to accounting: ${message}`);
+      }
     },
 
     getApprovalQueue(organizationId: string, approverId: string) {

@@ -8,7 +8,9 @@ import {
   getExpenseFileBlobUrl,
   getMileageRate,
   getSupportedCurrencies,
+  listExpenses,
   previewMileageDistance,
+  sendInvoiceToAccounting,
   submitExpense,
   updateExpense
 } from '../api';
@@ -23,6 +25,8 @@ import { useTranslation } from '../i18n/LanguageContext';
 import { useCountry } from '../country/CountryContext';
 import { DateInput } from '../components/DateInput';
 import { useIsDesktop } from '../hooks/useIsDesktop';
+import { AmountInput } from '../components/AmountInput';
+import { formatAmount, formatQuantity, toAmountInput } from '../lib/money';
 
 type FormState = {
   invoiceNumber: string;
@@ -49,7 +53,7 @@ type FormState = {
   mileageRoundTrip: boolean;
 };
 
-type SavingAction = 'draft' | 'submit' | 'approve' | 'reject' | 'delete' | null;
+type SavingAction = 'draft' | 'submit' | 'send' | 'approve' | 'reject' | 'delete' | null;
 
 function toDateInputValue(value: string | null): string {
   if (!value) return '';
@@ -66,10 +70,10 @@ function toFormState(expense: Expense): FormState {
     vendorTaxId: expense.vendorTaxId ?? '',
     customerName: expense.customerName ?? '',
     customerAddress: expense.customerAddress ?? '',
-    subtotal: expense.subtotal ?? '',
+    subtotal: toAmountInput(expense.subtotal),
     taxRate: expense.taxRate ?? '',
-    taxAmount: expense.taxAmount ?? '',
-    totalAmount: expense.totalAmount ?? '',
+    taxAmount: toAmountInput(expense.taxAmount),
+    totalAmount: toAmountInput(expense.totalAmount),
     currency: expense.currency ?? '',
     paymentMethod: expense.paymentMethod ?? '',
     paymentTerms: expense.paymentTerms ?? '',
@@ -142,6 +146,8 @@ export function ExpenseReviewPage() {
   const [routeQuery, setRouteQuery] = useState<{ from: string; to: string } | null>(null);
   const [ratePerKm, setRatePerKm] = useState<number | null>(null);
   const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([]);
+  // Purchase invoices: the next one waiting to be checked, so sending moves straight on to it.
+  const [nextInvoiceId, setNextInvoiceId] = useState<string | null>(null);
   const lastCalculatedRef = useRef<{ from: string; to: string } | null>(null);
 
   const load = () => {
@@ -159,10 +165,15 @@ export function ExpenseReviewPage() {
         if (inv.expenseType === 'MILEAGE') {
           getMileageRate().then((r) => setRatePerKm(r.ratePerKm)).catch(() => setRatePerKm(null));
         }
-        if (inv.expenseType === 'RECEIPT') {
+        if (inv.expenseType !== 'MILEAGE') {
           getSupportedCurrencies()
             .then((r) => setSupportedCurrencies(r.supportedCurrencies))
             .catch(() => setSupportedCurrencies([]));
+        }
+        if (inv.expenseType === 'PURCHASE_INVOICE') {
+          listExpenses({ module: 'PURCHASE_INVOICES', status: 'EXTRACTED', pageSize: 2 })
+            .then((r) => setNextInvoiceId(r.expenses.find((other) => other.id !== inv.id)?.id ?? null))
+            .catch(() => setNextInvoiceId(null));
         }
       })
       .catch((err) => setError(err instanceof Error ? err.message : t('review.loadFailed')))
@@ -204,15 +215,18 @@ export function ExpenseReviewPage() {
         ? {
             ...prev,
             currency: expense.originalCurrency ?? prev.currency,
-            subtotal: expense.originalSubtotal ?? prev.subtotal,
-            taxAmount: expense.originalTaxAmount ?? prev.taxAmount,
-            totalAmount: expense.originalTotalAmount ?? prev.totalAmount
+            subtotal: expense.originalSubtotal != null ? toAmountInput(expense.originalSubtotal) : prev.subtotal,
+            taxAmount: expense.originalTaxAmount != null ? toAmountInput(expense.originalTaxAmount) : prev.taxAmount,
+            totalAmount: expense.originalTotalAmount != null ? toAmountInput(expense.originalTotalAmount) : prev.totalAmount
           }
         : prev
     );
   };
 
   const isMileage = expense?.expenseType === 'MILEAGE';
+  // Purchase invoices go through the same page, but are sent to accounting instead of approved.
+  const isInvoice = expense?.expenseType === 'PURCHASE_INVOICE';
+  const listPath = isInvoice ? '/invoices' : '/expenses';
 
   const buildPayload = () => {
     if (!form) return null;
@@ -286,7 +300,7 @@ export function ExpenseReviewPage() {
     setError(null);
     try {
       await deleteExpense(id);
-      navigate('/expenses');
+      navigate(listPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('review.deleteFailed'));
       setSaving(null);
@@ -302,7 +316,7 @@ export function ExpenseReviewPage() {
     setError(null);
     try {
       await updateExpense(id, payload);
-      navigate('/expenses');
+      navigate(listPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('review.saveDraftFailed'));
       setSaving(null);
@@ -325,6 +339,28 @@ export function ExpenseReviewPage() {
       navigate('/expenses');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('review.submitFailed'));
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  // Saves the edited fields, then hands the invoice to the accounting system
+  // and moves on to the next one waiting to be checked.
+  const handleSendToAccounting = async () => {
+    if (!id) return;
+    const payload = buildPayload();
+    if (!payload) return;
+
+    setSaving('send');
+    setError(null);
+    try {
+      await updateExpense(id, payload);
+      await sendInvoiceToAccounting(id);
+      navigate(nextInvoiceId ? `/invoices/${nextInvoiceId}` : '/invoices');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('invoices.sendFailed'));
+      // The failure is stored on the invoice: reload to show it.
+      load();
     } finally {
       setSaving(null);
     }
@@ -368,7 +404,7 @@ export function ExpenseReviewPage() {
     return (
       <div className="empty-state">
         <h3>{t('review.notFound')}</h3>
-        <Link className="button-primary" to="/expenses">
+        <Link className="button-primary" to={listPath}>
           {t('review.backToExpenses')}
         </Link>
       </div>
@@ -409,16 +445,31 @@ export function ExpenseReviewPage() {
             {saving === 'delete' ? t('common.deleting') : t('review.delete')}
           </button>
           <button className="button-outline" disabled={saving !== null} onClick={handleSaveDraft} type="button">
-            {saving === 'draft' ? t('common.saving') : t('common.saveDraft')}
+            {saving === 'draft' ? t('common.saving') : isInvoice ? t('common.save') : t('common.saveDraft')}
           </button>
-          <button
-            className="button-primary"
-            disabled={saving !== null || !hasAmount}
-            onClick={handleSubmitForApproval}
-            type="button"
-          >
-            {saving === 'submit' ? t('common.submitting') : t('common.submitForApproval')}
-          </button>
+          {isInvoice ? (
+            <button
+              className="button-primary"
+              disabled={saving !== null || !hasAmount}
+              onClick={handleSendToAccounting}
+              type="button"
+            >
+              {saving === 'send'
+                ? t('invoices.sending')
+                : nextInvoiceId
+                  ? t('invoices.sendAndNext')
+                  : t('invoices.sendToAccounting')}
+            </button>
+          ) : (
+            <button
+              className="button-primary"
+              disabled={saving !== null || !hasAmount}
+              onClick={handleSubmitForApproval}
+              type="button"
+            >
+              {saving === 'submit' ? t('common.submitting') : t('common.submitForApproval')}
+            </button>
+          )}
         </div>
       )}
 
@@ -481,8 +532,8 @@ export function ExpenseReviewPage() {
   return (
     <div className="review-page">
       <div className="review-header">
-        <Link className="back-link" to="/expenses">
-          {t('review.allExpenses')}
+        <Link className="back-link" to={listPath}>
+          {isInvoice ? t('invoices.allInvoices') : t('review.allExpenses')}
         </Link>
         <StatusPill status={expense.status} />
       </div>
@@ -556,6 +607,21 @@ export function ExpenseReviewPage() {
       {expense.status === 'REJECTED' && lastDecision && (
         <div className="alert alert-error">
           <span>{t('review.rejectedBy', { name: lastDecision.approver.name, comment: lastDecision.comment ?? '' })}</span>
+        </div>
+      )}
+
+      {expense.status === 'SENT' && (
+        <div className="alert alert-success">
+          <span>
+            {t('invoices.sentOn', { date: formatDateTime(expense.sentToAccountingAt) })}
+            {expense.accountingRef ? t('invoices.sentReference', { reference: expense.accountingRef }) : ''}.
+          </span>
+        </div>
+      )}
+
+      {expense.status !== 'SENT' && expense.accountingError && !error && (
+        <div className="alert alert-warning">
+          <span>{t('invoices.lastSendFailed', { error: expense.accountingError })}</span>
         </div>
       )}
 
@@ -655,7 +721,7 @@ export function ExpenseReviewPage() {
                   <label className="form-field">
                     <span>{t('review.totalCalculated')}</span>
                     <input
-                      value={estimatedAmount != null ? estimatedAmount.toFixed(2) : (expense.totalAmount ?? '—')}
+                      value={formatAmount(estimatedAmount ?? expense.totalAmount, expense.currency)}
                       disabled
                     />
                   </label>
@@ -722,17 +788,20 @@ export function ExpenseReviewPage() {
                       onChange={(e) => updateField('invoiceNumber', e.target.value)}
                     />
                   </label>
-                  <label className="form-field">
-                    <span>{t('common.category')}</span>
-                    <Select
-                      value={form.categoryId}
-                      onChange={(value) => updateField('categoryId', value)}
-                      options={[
-                        { value: '', label: t('common.uncategorized') },
-                        ...categories.map((cat) => ({ value: cat.id, label: cat.name }))
-                      ]}
-                    />
-                  </label>
+                  {/* Expense categories are for reimbursement reports; the accounting system books purchase invoices itself. */}
+                  {!isInvoice && (
+                    <label className="form-field">
+                      <span>{t('common.category')}</span>
+                      <Select
+                        value={form.categoryId}
+                        onChange={(value) => updateField('categoryId', value)}
+                        options={[
+                          { value: '', label: t('common.uncategorized') },
+                          ...categories.map((cat) => ({ value: cat.id, label: cat.name }))
+                        ]}
+                      />
+                    </label>
+                  )}
                   <label className="form-field">
                     <span>{t('review.invoiceDate')}</span>
                     <DateInput value={form.invoiceDate} onChange={(value) => updateField('invoiceDate', value)} />
@@ -749,12 +818,7 @@ export function ExpenseReviewPage() {
                 <div className="form-grid">
                   <label className="form-field">
                     <span>{t('review.subtotal')}</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={form.subtotal}
-                      onChange={(e) => updateField('subtotal', e.target.value)}
-                    />
+                    <AmountInput value={form.subtotal} onChange={(value) => updateField('subtotal', value)} />
                   </label>
                   <label className="form-field">
                     <span>{t('review.taxRate')}</span>
@@ -767,21 +831,11 @@ export function ExpenseReviewPage() {
                   </label>
                   <label className="form-field">
                     <span>{t('review.taxAmount')}</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={form.taxAmount}
-                      onChange={(e) => updateField('taxAmount', e.target.value)}
-                    />
+                    <AmountInput value={form.taxAmount} onChange={(value) => updateField('taxAmount', value)} />
                   </label>
                   <label className="form-field">
                     <span>{t('review.totalAmount')}</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={form.totalAmount}
-                      onChange={(e) => updateField('totalAmount', e.target.value)}
-                    />
+                    <AmountInput value={form.totalAmount} onChange={(value) => updateField('totalAmount', value)} />
                   </label>
                   <label className="form-field">
                     <span>{t('common.currency')}</span>
@@ -814,7 +868,7 @@ export function ExpenseReviewPage() {
                   <div className="alert alert-info alert-inline">
                     <span>
                       {t('review.originallyCaptured', {
-                        amount: expense.originalTotalAmount ?? '—',
+                        amount: formatAmount(expense.originalTotalAmount, expense.originalCurrency, { withCode: false }),
                         currency: expense.originalCurrency
                       })}
                       {expense.exchangeRate
@@ -838,28 +892,47 @@ export function ExpenseReviewPage() {
               {expense.items.length > 0 && (
                 <div className="form-section">
                   <h3>{t('review.lineItems')}</h3>
-                  <div className="invoice-table-wrap">
-                    <table className="invoice-table invoice-table--compact">
-                      <thead>
-                        <tr>
-                          <th>{t('table.description')}</th>
-                          <th className="align-right">{t('table.qty')}</th>
-                          <th className="align-right">{t('table.unitPrice')}</th>
-                          <th className="align-right">{t('table.total')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {expense.items.map((item) => (
-                          <tr key={item.id}>
-                            <td dir="auto">{item.description}</td>
-                            <td className="align-right">{item.quantity ?? '—'}</td>
-                            <td className="align-right">{item.unitPrice ?? '—'}</td>
-                            <td className="align-right">{item.totalPrice ?? '—'}</td>
+                  {/* A table doesn't fit a phone: there each item is a row of its own (description, qty × price, total). */}
+                  {isDesktop ? (
+                    <div className="invoice-table-wrap">
+                      <table className="invoice-table invoice-table--compact">
+                        <thead>
+                          <tr>
+                            <th>{t('table.description')}</th>
+                            <th className="align-right">{t('table.qty')}</th>
+                            <th className="align-right">{t('table.unitPrice')}</th>
+                            <th className="align-right">{t('table.total')}</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {expense.items.map((item) => (
+                            <tr key={item.id}>
+                              <td dir="auto">{item.description}</td>
+                              <td className="align-right">{formatQuantity(item.quantity)}</td>
+                              <td className="align-right">{formatAmount(item.unitPrice, expense.currency, { withCode: false })}</td>
+                              <td className="align-right">{formatAmount(item.totalPrice, expense.currency, { withCode: false })}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <ul className="line-item-list">
+                      {expense.items.map((item) => (
+                        <li key={item.id} className="line-item">
+                          <span className="line-item-main">
+                            <span className="line-item-description" dir="auto">
+                              {item.description}
+                            </span>
+                            <span className="line-item-sub">
+                              {formatQuantity(item.quantity)} × {formatAmount(item.unitPrice, expense.currency, { withCode: false })}
+                            </span>
+                          </span>
+                          <span className="line-item-total">{formatAmount(item.totalPrice, expense.currency, { withCode: false })}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
 

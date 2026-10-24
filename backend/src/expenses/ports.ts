@@ -1,3 +1,4 @@
+import { Role } from '@prisma/client';
 import { CountryProfile } from '../countries/country-profile';
 
 // Ports for the two things v1 already knows will be swapped later:
@@ -67,7 +68,7 @@ export interface FileStorage {
 
 export type Approver = {
   id: string;
-  role: 'EMPLOYEE' | 'APPROVER' | 'ADMIN';
+  role: Role;
 };
 
 // The one thing this module needs from auth: who does this person report to,

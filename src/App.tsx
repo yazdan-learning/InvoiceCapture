@@ -12,7 +12,9 @@ import { AdminUsersPage } from './pages/AdminUsersPage';
 import { AdminSettingsPage } from './pages/AdminSettingsPage';
 import { AppShell } from './components/AppShell';
 import { useAuth } from './auth/AuthContext';
-import { Role } from './types';
+import { useModules } from './workspace/ModulesContext';
+import { canHandlePurchaseInvoices } from './workspace/permissions';
+import { AppModule, Role } from './types';
 
 function RequireRole({ roles, children }: { roles: Role[]; children: ReactElement }) {
   const { user } = useAuth();
@@ -22,14 +24,30 @@ function RequireRole({ roles, children }: { roles: Role[]; children: ReactElemen
   return children;
 }
 
+// A module switched off in Settings has no pages; the server refuses its API too.
+function RequireModule({ module, children }: { module: AppModule; children: ReactElement }) {
+  const { has } = useModules();
+  return has(module) ? children : <Navigate to="/" replace />;
+}
+
+// Purchase invoices: the module and the accountant (or admin) role.
+function InvoicesOnly({ children }: { children: ReactElement }) {
+  const { user } = useAuth();
+  if (!user || !canHandlePurchaseInvoices(user.role)) return <Navigate to="/" replace />;
+  return <RequireModule module="PURCHASE_INVOICES">{children}</RequireModule>;
+}
+
 // Every authenticated route goes through here: redirect to /login if signed
-// out, otherwise wrap the page in the sidebar/mobile-nav shell.
+// out, otherwise wrap the page in the sidebar/mobile-nav shell — once the
+// organization's modules are known, so menus and pages don't flash.
 function Protected({ children }: { children: ReactElement }) {
   const { isAuthenticated } = useAuth();
+  const { ready } = useModules();
   const location = useLocation();
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
+  if (!ready) return null;
   return <AppShell>{children}</AppShell>;
 }
 
@@ -49,7 +67,9 @@ function App() {
         path="/expenses"
         element={
           <Protected>
-            <ExpenseListPage />
+            <RequireModule module="EXPENSES">
+              <ExpenseListPage />
+            </RequireModule>
           </Protected>
         }
       />
@@ -65,7 +85,9 @@ function App() {
         path="/upload/receipt"
         element={
           <Protected>
-            <UploadPage />
+            <RequireModule module="EXPENSES">
+              <UploadPage />
+            </RequireModule>
           </Protected>
         }
       />
@@ -73,7 +95,9 @@ function App() {
         path="/upload/mileage"
         element={
           <Protected>
-            <MileageEntryPage />
+            <RequireModule module="EXPENSES">
+              <MileageEntryPage />
+            </RequireModule>
           </Protected>
         }
       />
@@ -86,12 +110,45 @@ function App() {
         }
       />
       <Route
+        path="/invoices"
+        element={
+          <Protected>
+            <InvoicesOnly>
+              <ExpenseListPage module="PURCHASE_INVOICES" />
+            </InvoicesOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/invoices/upload"
+        element={
+          <Protected>
+            <InvoicesOnly>
+              <UploadPage expenseType="PURCHASE_INVOICE" />
+            </InvoicesOnly>
+          </Protected>
+        }
+      />
+      {/* The same review page as expenses: it adapts to the purchase-invoice type. */}
+      <Route
+        path="/invoices/:id"
+        element={
+          <Protected>
+            <InvoicesOnly>
+              <ExpenseReviewPage />
+            </InvoicesOnly>
+          </Protected>
+        }
+      />
+      <Route
         path="/approvals"
         element={
           <Protected>
-            <RequireRole roles={['APPROVER', 'ADMIN']}>
-              <ApprovalQueuePage />
-            </RequireRole>
+            <RequireModule module="EXPENSES">
+              <RequireRole roles={['APPROVER', 'ADMIN']}>
+                <ApprovalQueuePage />
+              </RequireRole>
+            </RequireModule>
           </Protected>
         }
       />

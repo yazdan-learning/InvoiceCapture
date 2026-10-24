@@ -25,3 +25,9 @@ organizationRouter.patch(
 export const countryRouter = Router();
 
 countryRouter.get('/', asyncHandler(organizationController.getCountry));
+
+// The enabled modules, for every signed-in user (mounted like countryRouter):
+// expenses, purchase invoices, or both.
+export const modulesRouter = Router();
+
+modulesRouter.get('/', asyncHandler(organizationController.getModules));

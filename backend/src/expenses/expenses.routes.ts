@@ -3,6 +3,7 @@ import multer from 'multer';
 import { env } from '../config/env';
 import { authService } from '../auth/auth.routes';
 import { requireRole } from '../auth/auth.middleware';
+import { APPROVER_ROLES } from '../auth/permissions';
 import { createExpensesController } from './expenses.controller';
 import { createExpensesService } from './expenses.service';
 import { N8nInvoiceExtractor } from './adapters/n8n-extractor';
@@ -103,7 +104,7 @@ expensesRouter.get('/', validate(listExpensesQuerySchema, 'query'), asyncHandler
 // Must come before "/:id" — "approvals" would otherwise be parsed as an expense id.
 expensesRouter.get(
   '/approvals/queue',
-  requireRole('APPROVER', 'ADMIN'),
+  requireRole(...APPROVER_ROLES),
   asyncHandler(expensesController.approvalQueue)
 );
 
@@ -138,9 +139,16 @@ expensesRouter.post(
   asyncHandler(expensesController.submit)
 );
 
+// Purchase invoices only; who may send is checked in the service (module + role).
+expensesRouter.post(
+  '/:id/send',
+  validate(expenseIdParamsSchema, 'params'),
+  asyncHandler(expensesController.sendToAccounting)
+);
+
 expensesRouter.post(
   '/:id/approve',
-  requireRole('APPROVER', 'ADMIN'),
+  requireRole(...APPROVER_ROLES),
   validate(expenseIdParamsSchema, 'params'),
   validate(approveSchema, 'body'),
   asyncHandler(expensesController.approve)
@@ -148,7 +156,7 @@ expensesRouter.post(
 
 expensesRouter.post(
   '/:id/reject',
-  requireRole('APPROVER', 'ADMIN'),
+  requireRole(...APPROVER_ROLES),
   validate(expenseIdParamsSchema, 'params'),
   validate(rejectSchema, 'body'),
   asyncHandler(expensesController.reject)

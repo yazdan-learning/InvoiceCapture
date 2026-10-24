@@ -1,4 +1,4 @@
-import { Prisma, ExpenseStatus, ExpenseType } from '@prisma/client';
+import { AppModule, Prisma, ExpenseStatus, ExpenseType } from '@prisma/client';
 import { prisma } from '../config/prisma';
 
 export type LineItemInput = {
@@ -63,6 +63,11 @@ const expenseInclude = {
   }
 };
 
+// Purchase invoices and expenses share the table but are listed separately.
+function inModule(module: AppModule): Prisma.ExpenseWhereInput {
+  return { expenseType: module === 'PURCHASE_INVOICES' ? 'PURCHASE_INVOICE' : { not: 'PURCHASE_INVOICE' } };
+}
+
 export const expensesRepository = {
   create(input: CreateExpenseInput) {
     const { items, ...expenseFields } = input;
@@ -110,10 +115,11 @@ export const expensesRepository = {
 
   list(
     organizationId: string,
-    filters: { status?: ExpenseStatus; search?: string; page: number; pageSize: number; uploadedBy?: string }
+    filters: { module: AppModule; status?: ExpenseStatus; search?: string; page: number; pageSize: number; uploadedBy?: string }
   ) {
     const where: Prisma.ExpenseWhereInput = {
       organizationId,
+      ...inModule(filters.module),
       ...(filters.uploadedBy ? { uploadedBy: filters.uploadedBy } : {}),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.search
@@ -140,7 +146,7 @@ export const expensesRepository = {
 
   listForExport(organizationId: string, status?: ExpenseStatus, uploadedBy?: string) {
     return prisma.expense.findMany({
-      where: { organizationId, ...(status ? { status } : {}), ...(uploadedBy ? { uploadedBy } : {}) },
+      where: { organizationId, ...inModule('EXPENSES'), ...(status ? { status } : {}), ...(uploadedBy ? { uploadedBy } : {}) },
       include: expenseInclude,
       orderBy: { createdAt: 'desc' }
     });
@@ -204,6 +210,22 @@ export const expensesRepository = {
       select: { country: true }
     });
     return org.country;
+  },
+
+  async getOrganizationModules(organizationId: string): Promise<AppModule[]> {
+    const org = await prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { modules: true }
+    });
+    return org.modules;
+  },
+
+  async getOrganizationAccountingConnector(organizationId: string): Promise<string> {
+    const org = await prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { accountingConnector: true }
+    });
+    return org.accountingConnector;
   },
 
   async getOrganizationDefaultLanguage(organizationId: string): Promise<string> {

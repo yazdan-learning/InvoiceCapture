@@ -59,7 +59,8 @@ const pl: Translations = {
     pendingApproval: 'Oczekuje na zatwierdzenie',
     approved: 'Zatwierdzone',
     rejected: 'Odrzucone',
-    failed: 'Nieudane'
+    failed: 'Nieudane',
+    sent: 'Wysłano'
   },
 
   nav: {
@@ -72,7 +73,9 @@ const pl: Translations = {
     admin: 'Administrator',
     users: 'Użytkownicy',
     settings: 'Ustawienia',
-    add: 'Dodaj'
+    add: 'Dodaj',
+    invoices: 'Faktury',
+    scan: 'Skanuj'
   },
 
   login: {
@@ -121,7 +124,9 @@ const pl: Translations = {
     uploadReceiptTitle: 'Prześlij paragon',
     uploadReceiptDesc: 'Zrób zdjęcie lub prześlij paragon albo fakturę — automatycznie wyodrębnimy dane.',
     logMileageTitle: 'Zarejestruj przejazd',
-    logMileageDesc: 'Zarejestruj przejazd na podstawie odległości lub podaj miejsce startu i celu, a obliczymy odległość.'
+    logMileageDesc: 'Zarejestruj przejazd na podstawie odległości lub podaj miejsce startu i celu, a obliczymy odległość.',
+    purchaseInvoiceTitle: 'Faktura zakupowa',
+    purchaseInvoiceDesc: 'Zeskanuj fakturę dostawcy dla systemu księgowego.'
   },
 
   upload: {
@@ -181,7 +186,8 @@ const pl: Translations = {
     active: 'Aktywny',
     deactivated: 'Dezaktywowany',
     confirmDeactivate: 'Dezaktywować użytkownika {name}? Nie będzie już mógł się zalogować.',
-    deactivateFailed: 'Nie udało się dezaktywować użytkownika'
+    deactivateFailed: 'Nie udało się dezaktywować użytkownika',
+    roleAccountant: 'Księgowy'
   },
 
   adminSettings: {
@@ -206,7 +212,17 @@ const pl: Translations = {
     mileageRateInvalid: 'Podaj stawkę za kilometr większą niż 0.',
     mileageHint:
       'Stosowana do każdego wydatku kilometrowego w organizacji — odległość × (w obie strony ? 2 : 1) × ta stawka. Już wysłane wydatki zachowują kwotę, z jaką zostały zapisane; dotyczy to tylko nowych i edytowanych wydatków.',
-    saveSettings: 'Zapisz ustawienia'
+    saveSettings: 'Zapisz ustawienia',
+    modulesSection: 'Moduły',
+    moduleEXPENSES: 'Wydatki',
+    moduleEXPENSESHint: 'Paragony i przejazdy pracowników, zatwierdzane przez przełożonego.',
+    modulePURCHASE_INVOICES: 'Faktury zakupowe',
+    modulePURCHASE_INVOICESHint: 'Faktury dostawców skanowane i sprawdzane przez księgowych, a następnie wysyłane do systemu księgowego. Bez etapu zatwierdzania.',
+    modulesRequired: 'Włącz co najmniej jeden moduł.',
+    accountingSection: 'System księgowy',
+    accountingSystem: 'Wysyłaj faktury zakupowe do',
+    accountingHint: 'Gdzie „Wyślij do księgowości” tworzy sprawdzoną fakturę. Przy „Brak” jest ona tylko oznaczana jako wysłana.',
+    accountingNone: 'Brak'
   },
 
   review: {
@@ -273,6 +289,33 @@ const pl: Translations = {
   routeMap: {
     loadFailed: 'Nie udało się załadować mapy.',
     routeFailed: 'Nie udało się pokazać trasy na mapie.'
+  },
+
+  // ===== Purchase invoices (dashboard, list, review) =====
+  invoices: {
+    title: 'Faktury',
+    subtitle: 'Faktury dostawców czekające na sprawdzenie.',
+    scan: 'Skanuj fakturę',
+    statToCheck: 'Do sprawdzenia',
+    statFailed: 'Nie odczytano',
+    statSent: 'Wysłane do księgowości',
+    toCheck: 'Do sprawdzenia',
+    viewAll: 'Wszystkie faktury →',
+    allDone: 'Wszystkie faktury są sprawdzone',
+    allDoneHint: 'Zeskanuj kolejną, gdy dotrze.',
+    searchPlaceholder: 'Szukaj dostawcy lub numeru faktury…',
+    loading: 'Ładowanie faktur…',
+    empty: 'Brak faktur',
+    emptyHint: 'Zeskanuj fakturę dostawcy, aby zacząć.',
+    loadFailed: 'Nie udało się wczytać faktur',
+    allInvoices: '← Wszystkie faktury',
+    sendToAccounting: 'Wyślij do księgowości',
+    sendAndNext: 'Wyślij i dalej',
+    sending: 'Wysyłanie…',
+    sendFailed: 'Nie udało się wysłać faktury',
+    sentOn: 'Wysłano do księgowości {date}',
+    sentReference: ' (numer {reference})',
+    lastSendFailed: 'Ostatnia próba wysłania tej faktury nie powiodła się: {error}'
   }
 };
 

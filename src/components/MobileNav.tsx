@@ -3,7 +3,10 @@ import { AuthUser } from '../types';
 import { useTranslation } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { UserMenu } from './UserMenu';
-import { IconApprovals, IconDashboard, IconExpenses, IconUpload } from './icons';
+import { useModules } from '../workspace/ModulesContext';
+import { addActionFor, navItemsFor } from '../workspace/navigation';
+import { NAV_ICONS, NAV_LABELS } from './nav-icons';
+import { IconCamera, IconUpload } from './icons';
 
 export function MobileTopBar({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const { t } = useTranslation();
@@ -21,37 +24,37 @@ export function MobileTopBar({ user, onLogout }: { user: AuthUser; onLogout: () 
 export function MobileBottomNav({ user }: { user: AuthUser }) {
   const location = useLocation();
   const { t } = useTranslation();
-  const isExpensesActive =
-    location.pathname === '/expenses' || location.pathname.startsWith('/expenses/');
+  const { modules } = useModules();
+  const [home, ...tabs] = navItemsFor(user.role, modules);
+  const add = addActionFor(user.role, modules);
+
+  const tab = (item: typeof home) => {
+    const Icon = NAV_ICONS[item.id];
+    return (
+      <Link key={item.id} to={item.to} className={`mobile-tab ${item.isActive(location.pathname) ? 'mobile-tab--active' : ''}`}>
+        <Icon className="mobile-tab-icon" />
+        {/* "Home" reads better than "Dashboard" in a tab bar. */}
+        <span>{item.id === 'dashboard' ? t('nav.home') : t(NAV_LABELS[item.id])}</span>
+      </Link>
+    );
+  };
 
   // Tabs keep their natural width and cluster together at the center of the
   // bar (fixed gap, no flex-grow) instead of stretching to fill it — that's
   // what pushed Upload off to one side and left dead/uneven space before.
-  // Upload sits right after Home so it lands near the middle of the cluster
-  // whether there are 3 tabs or 4.
+  // The add button sits right after Home so it lands near the middle of the
+  // cluster whatever the modules and role leave in the bar; it opens the
+  // camera directly when scanning invoices is all this person does.
   return (
     <nav className="mobile-bottom-nav">
-      <Link to="/" className={`mobile-tab ${location.pathname === '/' ? 'mobile-tab--active' : ''}`}>
-        <IconDashboard className="mobile-tab-icon" />
-        <span>{t('nav.home')}</span>
-      </Link>
-      <Link to="/upload" className="mobile-tab mobile-tab--upload">
-        <IconUpload className="mobile-tab-icon" />
-        <span>{t('nav.add')}</span>
-      </Link>
-      <Link to="/expenses" className={`mobile-tab ${isExpensesActive ? 'mobile-tab--active' : ''}`}>
-        <IconExpenses className="mobile-tab-icon" />
-        <span>{t('nav.expenses')}</span>
-      </Link>
-      {user.role !== 'EMPLOYEE' && (
-        <Link
-          to="/approvals"
-          className={`mobile-tab ${location.pathname === '/approvals' ? 'mobile-tab--active' : ''}`}
-        >
-          <IconApprovals className="mobile-tab-icon" />
-          <span>{t('nav.approvals')}</span>
+      {tab(home)}
+      {add && (
+        <Link to={add.to} className="mobile-tab mobile-tab--upload">
+          {add.kind === 'scan' ? <IconCamera className="mobile-tab-icon" /> : <IconUpload className="mobile-tab-icon" />}
+          <span>{add.kind === 'scan' ? t('nav.scan') : t('nav.add')}</span>
         </Link>
       )}
+      {tabs.map(tab)}
     </nav>
   );
 }

@@ -1,12 +1,15 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { CountryOption, getOrganizationSettings, updateOrganizationSettings } from '../api';
 import { useCountry } from '../country/CountryContext';
+import { useModules } from '../workspace/ModulesContext';
+import { AppModule } from '../types';
 import { useTranslation, SUPPORTED_LANGUAGES, LANGUAGE_LABELS, Language } from '../i18n/LanguageContext';
 import { Select } from '../components/Select';
 
 export function AdminSettingsPage() {
   const { t } = useTranslation();
   const { reload: reloadCountry } = useCountry();
+  const { reload: reloadModules } = useModules();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -16,6 +19,10 @@ export function AdminSettingsPage() {
   const [defaultLanguage, setDefaultLanguage] = useState<Language>('en');
   const [country, setCountry] = useState('INTL');
   const [countries, setCountries] = useState<CountryOption[]>([]);
+  const [modules, setModules] = useState<AppModule[]>([]);
+  const [supportedModules, setSupportedModules] = useState<AppModule[]>([]);
+  const [accountingConnector, setAccountingConnector] = useState('NONE');
+  const [accountingConnectors, setAccountingConnectors] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -27,6 +34,10 @@ export function AdminSettingsPage() {
         setDefaultLanguage(settings.defaultLanguage as Language);
         setCountry(settings.country);
         setCountries(settings.supportedCountries);
+        setModules(settings.modules);
+        setSupportedModules(settings.supportedModules.map((m) => m.id));
+        setAccountingConnector(settings.accountingConnector);
+        setAccountingConnectors(settings.supportedAccountingConnectors);
       })
       .catch((err) => setError(err instanceof Error ? err.message : t('adminSettings.loadFailed')))
       .finally(() => setLoading(false));
@@ -42,10 +53,22 @@ export function AdminSettingsPage() {
     if (selected) setDefaultCurrency(selected.defaultCurrency);
   };
 
+  const toggleModule = (module: AppModule, enabled: boolean) => {
+    setModules((current) => (enabled ? [...current, module] : current.filter((m) => m !== module)));
+  };
+
+  const expensesEnabled = modules.includes('EXPENSES');
+  const invoicesEnabled = modules.includes('PURCHASE_INVOICES');
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (modules.length === 0) {
+      setError(t('adminSettings.modulesRequired'));
+      return;
+    }
+    // The mileage rate only matters (and is only shown) with the expenses module.
     const rate = Number(mileageRatePerKm);
-    if (!Number.isFinite(rate) || rate <= 0) {
+    if (expensesEnabled && (!Number.isFinite(rate) || rate <= 0)) {
       setError(t('adminSettings.mileageRateInvalid'));
       return;
     }
@@ -54,12 +77,23 @@ export function AdminSettingsPage() {
     setError(null);
     setSuccessMessage(null);
     try {
-      const updated = await updateOrganizationSettings({ mileageRatePerKm: rate, defaultCurrency, defaultLanguage, country });
+      const updated = await updateOrganizationSettings({
+        ...(expensesEnabled ? { mileageRatePerKm: rate } : {}),
+        defaultCurrency,
+        defaultLanguage,
+        country,
+        modules,
+        // Only purchase invoices are sent to accounting.
+        ...(invoicesEnabled ? { accountingConnector } : {})
+      });
       setMileageRatePerKm(String(updated.mileageRatePerKm));
       setDefaultCurrency(updated.defaultCurrency);
       setDefaultLanguage(updated.defaultLanguage as Language);
       setCountry(updated.country);
+      setModules(updated.modules);
+      setAccountingConnector(updated.accountingConnector);
       reloadCountry();
+      reloadModules();
       setSuccessMessage(t('adminSettings.saved'));
     } catch (err) {
       setError(err instanceof Error ? err.message : t('adminSettings.saveFailed'));
@@ -90,6 +124,43 @@ export function AdminSettingsPage() {
       ) : (
         <div className="review-form">
           <form className="settings-form" onSubmit={handleSubmit}>
+            <div className="form-section">
+              <h3>{t('adminSettings.modulesSection')}</h3>
+              {supportedModules.map((module) => (
+                <label key={module} className="checkbox-field">
+                  <input
+                    type="checkbox"
+                    checked={modules.includes(module)}
+                    onChange={(e) => toggleModule(module, e.target.checked)}
+                  />
+                  <span>
+                    {t(`adminSettings.module${module}`)}
+                    <small>{t(`adminSettings.module${module}Hint`)}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            {invoicesEnabled && (
+              <div className="form-section">
+                <h3>{t('adminSettings.accountingSection')}</h3>
+                <div className="form-grid">
+                  <label className="form-field">
+                    <span>{t('adminSettings.accountingSystem')}</span>
+                    <Select
+                      value={accountingConnector}
+                      onChange={setAccountingConnector}
+                      options={accountingConnectors.map((c) => ({
+                        value: c.id,
+                        label: c.id === 'NONE' ? t('adminSettings.accountingNone') : c.name
+                      }))}
+                    />
+                  </label>
+                </div>
+                <p className="field-hint">{t('adminSettings.accountingHint')}</p>
+              </div>
+            )}
+
             <div className="form-section">
               <h3>{t('adminSettings.countrySection')}</h3>
               <div className="form-grid">
@@ -135,23 +206,25 @@ export function AdminSettingsPage() {
               <p className="field-hint">{t('adminSettings.languageHint')}</p>
             </div>
 
-            <div className="form-section">
-              <h3>{t('adminSettings.mileageSection')}</h3>
-              <div className="form-grid">
-                <label className="form-field">
-                  <span>{t('adminSettings.mileageRate')}</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    value={mileageRatePerKm}
-                    onChange={(e) => setMileageRatePerKm(e.target.value)}
-                    required
-                  />
-                </label>
+            {expensesEnabled && (
+              <div className="form-section">
+                <h3>{t('adminSettings.mileageSection')}</h3>
+                <div className="form-grid">
+                  <label className="form-field">
+                    <span>{t('adminSettings.mileageRate')}</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={mileageRatePerKm}
+                      onChange={(e) => setMileageRatePerKm(e.target.value)}
+                      required
+                    />
+                  </label>
+                </div>
+                <p className="field-hint">{t('adminSettings.mileageHint')}</p>
               </div>
-              <p className="field-hint">{t('adminSettings.mileageHint')}</p>
-            </div>
+            )}
 
             <div className="action-bar">
               <button className="button-primary" type="submit" disabled={saving}>
