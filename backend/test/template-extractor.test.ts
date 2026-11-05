@@ -5,7 +5,8 @@ import { AMOUNTS_UNCHECKED } from '../src/expenses/adapters/direct-extractor';
 import { ExtractedInvoiceData, ExtractionResult, ExtractOptions, InvoiceExtractor, UploadedFile } from '../src/expenses/ports';
 import { iran } from '../src/countries/iran';
 import { international } from '../src/countries/international';
-import { AMOUNTS_FAR_OFF, ReaderSwitchExtractor, TemplateInvoiceExtractor } from '../src/reading/template-extractor';
+import { parseVatTable } from '@yazdan-learning/ai';
+import { AMOUNTS_FAR_OFF, ReaderSwitchExtractor, TAX_UNCHECKED, TemplateInvoiceExtractor, withVatTable } from '../src/reading/template-extractor';
 
 const file: UploadedFile = { buffer: Buffer.from('%PDF-1.4'), originalname: 'dm.pdf', mimetype: 'application/pdf', size: 8 } as UploadedFile;
 
@@ -63,7 +64,9 @@ describe('TemplateInvoiceExtractor', () => {
       [1, 7.95]
     ]);
     expect(result.error).toBeUndefined();
-    expect(result.raw).toMatchObject({ template: { vatCodeLines: [0] } });
+    expect(result.raw).toMatchObject({ template: { vatCodeLines: [0], vatTable: 'used' } });
+    // Tax and net from the VAT table: 1,27 + 0,19 and 6,68 + 2,76.
+    expect([result.data!.taxAmount, result.data!.subtotal, result.data!.taxRate]).toEqual([1.46, 9.44, null]);
     // One OCR call, handed to the classic reading.
     expect(ocr.extractText).toHaveBeenCalledTimes(1);
     expect(classic.extract.mock.calls[0][1]).toMatchObject({ ocrText: DM_OCR });
@@ -152,5 +155,33 @@ describe('ReaderSwitchExtractor', () => {
     expect(classic.extract).toHaveBeenCalledWith(file, { country: iran });
     await reader.extract(file, { country: iran, reader: 'TEMPLATE' });
     expect(template.extract).toHaveBeenCalledWith(file, { country: iran });
+  });
+});
+
+describe('withVatTable', () => {
+  const rows = parseVatTable(DM_OCR);
+  const read = (taxAmount: number | null, subtotal: number | null, totalAmount = 10.9) => ({ ...reading([['A', 1, totalAmount, totalAmount]], totalAmount), taxAmount, subtotal, taxRate: 19 });
+
+  it('replaces a made-up tax with the printed one', () => {
+    const { data, outcome } = withVatTable(read(1.2, 9.7), rows);
+    expect(outcome).toBe('used');
+    expect([data.taxAmount, data.subtotal, data.taxRate]).toEqual([1.46, 9.44, null]);
+  });
+
+  it('keeps a reading that already agrees', () => {
+    expect(withVatTable(read(1.46, 9.44), rows).outcome).toBe('agrees');
+  });
+
+  it('says so when the table does not add up to the total read', () => {
+    expect(withVatTable(read(1.2, 9.7, 12.5), rows).outcome).toBe('disagrees');
+  });
+
+  it('does nothing without a VAT table', () => {
+    expect(withVatTable(read(1.2, 9.7), []).outcome).toBe('none');
+  });
+
+  it('warns on the expense when the table disagrees', async () => {
+    const { reader } = setup({ success: true, data: { ...reading([['A', 1, 12.5, 12.5]], 12.5), taxAmount: 1, subtotal: 11.5 }, raw: {} });
+    expect((await reader.extract(file, { country: international })).error).toBe(TAX_UNCHECKED);
   });
 });

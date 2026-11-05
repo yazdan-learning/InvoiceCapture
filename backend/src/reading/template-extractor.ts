@@ -1,4 +1,5 @@
 import {
+  cents,
   checkReading,
   CheckOptions,
   enlargeSmallImage,
@@ -11,7 +12,9 @@ import {
   retryStep,
   reviewReading,
   smallGapCents,
-  StaticShopGuidance
+  VatRow,
+  StaticShopGuidance,
+  vatTotals
 } from '@yazdan-learning/ai';
 import { LlmClient } from '../ai/gateway/llm';
 import { OcrClient, OcrFile } from '../ai/gateway/ocr';
@@ -41,6 +44,10 @@ import { ExtractedInvoiceData, ExtractionResult, ExtractOptions, InvoiceExtracto
 //   - one last look with a stronger model when the amounts still don't add up
 //     (LLM_MODEL_LARGE; skipped when empty);
 //   - an invoice still far off its total gets a stronger warning than a few cents.
+//   - the VAT and net amounts come from the receipt's VAT table when it adds up
+//     to the total (the model makes up a tax that merely adds up: dm 5,80
+//     instead of the printed 4,60 + 1,51); a table that disagrees with the
+//     reading gets a warning;
 // Handwritten invoices are read as in CLASSIC (the vision model from the photo,
 // cross-checked against OCR at the same time, so no OCR first), with the small
 // photo enlarged. Several invoices in one file: each one gets the far-off
@@ -51,6 +58,9 @@ import { ExtractedInvoiceData, ExtractionResult, ExtractOptions, InvoiceExtracto
 /** Kept as the errorMessage when the lines are far off the total after every look. */
 export const AMOUNTS_FAR_OFF =
   'The items are far off the invoice total, so the photo was probably misread - please upload a clearer photo or check every line before submitting';
+
+/** Kept as the errorMessage when the VAT table printed on the receipt doesn't agree with the reading. */
+export const TAX_UNCHECKED = 'The VAT table on the receipt does not match the amounts read - please check the tax and the total before submitting';
 
 /** Persian/Arabic letters: an Iranian invoice has them, a German till receipt doesn't. */
 const ARABIC_SCRIPT = /[؀-ۿ]/;
@@ -69,6 +79,8 @@ export type TemplateReadingInfo = {
   smallImage: boolean | null;
   /** The photo was enlarged 2× before reading. */
   enlarged: boolean;
+  /** Tax and net amounts: as read, taken from the VAT table, or the table disagrees. */
+  vatTable?: 'none' | 'agrees' | 'used' | 'disagrees';
 };
 
 const hasGap = (check: ReadingCheck) => check.problems.some((p) => p.code === 'total_mismatch');
@@ -168,6 +180,11 @@ export class TemplateInvoiceExtractor implements InvoiceExtractor {
       }
     }
 
+    const vat = withVatTable(data, review.vatRows);
+    data = vat.data;
+    info.vatTable = vat.outcome;
+    if (vat.outcome === 'disagrees') error = [error, TAX_UNCHECKED].filter(Boolean).join('. ');
+
     if (!hasGap(check)) {
       error = withoutMessage(error, AMOUNTS_UNCHECKED);
     } else if (isFarOff(check)) {
@@ -185,6 +202,32 @@ export class TemplateInvoiceExtractor implements InvoiceExtractor {
     const structured = await retryStep(async () => parseJsonObject(await this.large!.complete({ ...EXTRACT_INVOICE, prompt, image })));
     return withoutTaxLine(toInvoiceData(structured, getCalendar(rules.calendar)));
   }
+}
+
+/**
+ * The tax and net amounts from the receipt's VAT table, when every row adds up
+ * and the gross amounts equal the total. A table whose rows add up but not to
+ * the total disagrees with the reading (a misread total or tax): warned about.
+ */
+export function withVatTable(data: ExtractedInvoiceData, rows: VatRow[]): { data: ExtractedInvoiceData; outcome: NonNullable<TemplateReadingInfo['vatTable']> } {
+  if (!rows.length) return { data, outcome: 'none' };
+  const totals = vatTotals(rows, cents(data.totalAmount));
+  if (!totals) {
+    const readable = rows.every((r) => r.consistent);
+    const tableTax = rows.reduce((sum, r) => sum + (r.taxCents ?? 0), 0);
+    return { data, outcome: readable && cents(data.taxAmount) !== tableTax ? 'disagrees' : 'none' };
+  }
+  if (cents(data.taxAmount) === totals.taxCents && cents(data.subtotal) === totals.netCents) return { data, outcome: 'agrees' };
+  return {
+    data: {
+      ...data,
+      taxAmount: totals.taxCents / 100,
+      subtotal: totals.netCents / 100,
+      // One rate: that's the rate. Several (dm: 19 % and 7 %): no single rate.
+      taxRate: rows.length === 1 ? rows[0].ratePercent : null
+    },
+    outcome: 'used'
+  };
 }
 
 /**
