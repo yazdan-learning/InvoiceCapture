@@ -289,7 +289,12 @@ const en = {
     currencyConverterHint: 'Used to convert receipts and to price raw materials. “Free market” is not connected yet.',
     pricingSection: 'Raw-material pricing',
     materialMatcher: 'Match materials with',
-    materialMatcherHint: 'The AI that suggests an index category for each material. Switch here if one handles your material names poorly; every suggestion is still checked by a person.'
+    materialMatcherHint: 'The AI that suggests an index category for each material. Switch here if one handles your material names poorly; every suggestion is still checked by a person.',
+    invoiceReadingSection: 'Invoice reading',
+    invoiceReader: 'Read invoices with',
+    invoiceReaderClassic: 'Classic (stable)',
+    invoiceReaderTemplate: 'Template-guided (beta)',
+    invoiceReaderHint: 'Template-guided shows on the photo where each field was read and lets you pick a value from the photo. Classic is the stable reading; switch back here at any time.'
   },
 
   // ===== Expense review page =====
@@ -333,6 +338,12 @@ const en = {
     rejectReasonRequired: 'Please explain why you are rejecting this expense.',
     openDocument: 'Open document',
     loadingPreview: 'Loading preview…',
+    pickFromPhoto: 'Pick from photo',
+    pickHint: 'Draw a box around the {field} on the photo',
+    pickReading: 'Reading the selected area…',
+    pickNothing: 'Nothing readable in that area. Draw the box again.',
+    pickFailed: 'Could not read the selected area. Try again.',
+    boxesFailed: 'The fields could not be found on the document right now. They will be looked for again next time.',
     vendorSection: 'Vendor',
     vendorName: 'Vendor name',
     taxId: 'Tax ID',

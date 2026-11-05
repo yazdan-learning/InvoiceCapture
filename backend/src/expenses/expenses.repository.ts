@@ -45,6 +45,7 @@ export type CreateExpenseInput = {
   isDuplicate: boolean;
   duplicateOfId?: string | null;
   rawExtraction?: Prisma.InputJsonValue;
+  initialReading?: Prisma.InputJsonValue;
   errorMessage?: string | null;
   categoryId?: string | null;
   mileageDate?: Date | null;

@@ -47,6 +47,10 @@ rows; to inspect data, run a small `tsx` script with the Prisma client.
 - **Material matchers** (`Organization.materialMatcher`): `LLM`, `JEV`, `COMBINED` in
   `backend/src/pricing/matchers/`. The price index is sample data
   (`adapters/sample-price-index-source.ts`) until the BLS API is confirmed.
+- **Invoice readers** (`Organization.invoiceReader`): `CLASSIC` (the stable extractor, tag
+  `extractor-classic-v1`) and `TEMPLATE` (template-guided, `backend/src/reading/`: field boxes on
+  the photo, pick from photo; template matching next). Keep `CLASSIC` working unchanged: new
+  reading behaviour goes behind `TEMPLATE`.
 - **Amounts** in the UI go through `src/lib/money.ts` and `AmountInput` (thousands separators).
 - **Translations**: every new UI string goes into all four files in `src/i18n/translations/`
   (en, de, pl, tr).

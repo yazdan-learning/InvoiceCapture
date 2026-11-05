@@ -163,6 +163,9 @@ unless `ADMIN`, purchase invoices are shared between accountants/admins. Pass
 | GET | `/api/expenses` | list, filters: `status`, `search`, `page`, `pageSize` |
 | GET | `/api/expenses/:id` | single expense detail |
 | GET | `/api/expenses/:id/file` | the original uploaded document (RECEIPT type only) |
+| GET | `/api/expenses/:id/field-boxes` | template-guided reader only: page sizes and a box per field where it was read (located on the first call) |
+| GET | `/api/expenses/:id/pages/:page` | one page of the document as an upright JPEG (the image the boxes refer to) |
+| POST | `/api/expenses/:id/read-region` | template-guided reader only: read one field from a region the user drew (`{ field, page, region }`, 0–1 fractions) |
 | PATCH | `/api/expenses/:id` | edit fields (uploader; any accountant/admin for a purchase invoice) — no status here |
 | DELETE | `/api/expenses/:id` | delete a draft, failed or rejected expense (same rule as editing) |
 | POST | `/api/expenses/:id/send` | send a purchase invoice to the org's accounting system (ACCOUNTANT/ADMIN) |
@@ -198,7 +201,7 @@ applied once at the router mount in `app.ts`, not per-route):
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/organization/settings` | current org settings (`mileageRatePerKm`, `defaultCurrency`, `defaultLanguage`, `country`, `modules`, `accountingConnector`, plus the `supported*` lists for each) |
-| PATCH | `/api/organization/settings` | update org settings — any one field, or several at once (incl. `currencyConverter`, `materialMatcher`) |
+| PATCH | `/api/organization/settings` | update org settings — any one field, or several at once (incl. `currencyConverter`, `materialMatcher`, `invoiceReader`) |
 
 ## Multi-currency
 
@@ -298,3 +301,30 @@ newPrice = previousPrice × (index now / index then) × (USD rate now / USD rate
   this app; sending them to the ERP comes later.
 
 Tests: `test/pricing.service.test.ts`, `test/material-matchers.test.ts` (Jev with `fetch` mocked).
+
+## Template-guided reading
+
+`Organization.invoiceReader` (Settings → Invoice reading) picks how invoices are read:
+`CLASSIC` is the stable `DirectInvoiceExtractor`, untouched (git tag `extractor-classic-v1`
+marks it); `TEMPLATE` is the template-guided reader being built in `src/reading/`. Switching
+back is that setting only. So far `TEMPLATE` reads with the same extractor and adds:
+
+- **Field boxes**: the first time the review page opens an invoice, the vision model is
+  shown the page images (`page-images.ts`: upright, at most 2000 px) and the values as read
+  (printed units, rawExtraction.data) and returns a box per field and line item
+  (`ExpenseFieldBox`, source `MODEL`; `Expense.boxesLocatedAt` marks it done). Text PDFs have
+  no page images, so no boxes.
+- **Pick from photo**: the user draws a region; the model sees the page with the region
+  framed and the region enlarged (with the country's handwriting rules for a handwritten
+  invoice) and returns the value, converted to the form's units (Toman as Rial, the exchange
+  rate when converted, Shamsi dates to ISO; a total that lost trailing zeros is fitted to the
+  line items). The region is kept as the field's `USER` box.
+
+Every upload also keeps `Expense.initialReading`, what the AI read, so it can be compared with
+what the user saved. Template matching (vendor keys, printed words) comes next.
+
+Scripts: `scripts/eval-extract.ts` scores readings against confirmed invoices (free on stored
+readings; `--rerun` reads the files again, at the cost of one reading each);
+`scripts/try-boxes.ts --out=<folder> <expenseId>...` draws the located boxes on the pages.
+
+Tests: `test/reading.test.ts` (vision model faked).

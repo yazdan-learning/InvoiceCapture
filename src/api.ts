@@ -255,6 +255,53 @@ export async function getCategories(apiBaseUrl = defaultBaseUrl): Promise<Catego
 // these routes require auth — so both fetch as an authenticated blob instead of
 // returning a directly-linkable URL.
 
+// Template-guided reading (Settings → Invoice reading): where on the document
+// each field was read, as boxes in 0–1 fractions of a page image.
+export type FieldBox = {
+  field: string;
+  source: 'MODEL' | 'USER';
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  value: string | null;
+};
+
+export type FieldBoxes = {
+  enabled: boolean;
+  pages: { index: number; width: number; height: number }[];
+  boxes: FieldBox[];
+  error?: string;
+};
+
+export type Region = { x: number; y: number; width: number; height: number };
+
+export async function getFieldBoxes(id: string, apiBaseUrl = defaultBaseUrl): Promise<FieldBoxes> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}/field-boxes`, apiBaseUrl), { headers: authHeaders() });
+  return parseJsonOrThrow(response);
+}
+
+export async function getPageImageBlobUrl(id: string, page: number, apiBaseUrl = defaultBaseUrl): Promise<string> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}/pages/${page}`, apiBaseUrl), { headers: authHeaders() });
+  if (!response.ok) throw new Error(`Failed to load page ${page + 1} (status ${response.status})`);
+  return URL.createObjectURL(await response.blob());
+}
+
+/** The field's value read from the region the user drew: a number for amounts, "YYYY-MM-DD" for dates. */
+export async function readRegion(
+  id: string,
+  input: { field: string; page: number; region: Region },
+  apiBaseUrl = defaultBaseUrl
+): Promise<{ field: string; value: string | number | null; box: FieldBox }> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}/read-region`, apiBaseUrl), {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input)
+  });
+  return parseJsonOrThrow(response);
+}
+
 export async function getExpenseFileBlobUrl(id: string, apiBaseUrl = defaultBaseUrl): Promise<string> {
   const response = await fetch(apiUrl(`/api/expenses/${id}/file`, apiBaseUrl), { headers: authHeaders() });
   if (!response.ok) {
@@ -399,6 +446,8 @@ export type OrganizationSettings = {
   supportedCurrencyConverters: { id: string; name: string }[];
   materialMatcher: string;
   supportedMaterialMatchers: { id: string; name: string }[];
+  invoiceReader: string;
+  supportedInvoiceReaders: { id: string; name: string }[];
 };
 
 export type UpdateOrganizationSettingsPayload = Partial<{
@@ -410,6 +459,7 @@ export type UpdateOrganizationSettingsPayload = Partial<{
   accountingConnector: string;
   currencyConverter: string;
   materialMatcher: string;
+  invoiceReader: string;
 }>;
 
 export type UpdatedOrganizationSettings = {
@@ -421,6 +471,7 @@ export type UpdatedOrganizationSettings = {
   accountingConnector: string;
   currencyConverter: string;
   materialMatcher: string;
+  invoiceReader: string;
 };
 
 // What the UI adapts to for the organization's country (see backend/src/countries).

@@ -234,6 +234,7 @@ export function createExpensesService({
           isDuplicate: Boolean(duplicate),
           duplicateOfId: duplicate?.id ?? null,
           rawExtraction: raw != null ? (raw as Prisma.InputJsonValue) : undefined,
+          initialReading: data ? (data as unknown as Prisma.InputJsonValue) : undefined,
           errorMessage,
           items
         });

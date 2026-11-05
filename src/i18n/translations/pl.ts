@@ -275,7 +275,12 @@ const pl: Translations = {
     currencyConverterHint: 'Używane do przeliczania paragonów i wyceny surowców. „Wolny rynek” nie jest jeszcze podłączony.',
     pricingSection: 'Ceny surowców',
     materialMatcher: 'Dopasowuj surowce za pomocą',
-    materialMatcherHint: 'AI, które proponuje kategorię indeksu dla każdego surowca. Zmień tutaj, jeśli któreś słabo radzi sobie z Twoimi nazwami; każdą propozycję nadal sprawdza człowiek.'
+    materialMatcherHint: 'AI, które proponuje kategorię indeksu dla każdego surowca. Zmień tutaj, jeśli któreś słabo radzi sobie z Twoimi nazwami; każdą propozycję nadal sprawdza człowiek.',
+    invoiceReadingSection: 'Odczyt faktur',
+    invoiceReader: 'Odczytuj faktury za pomocą',
+    invoiceReaderClassic: 'Klasyczny (stabilny)',
+    invoiceReaderTemplate: 'Oparty na szablonach (beta)',
+    invoiceReaderHint: 'Tryb oparty na szablonach pokazuje na zdjęciu, skąd odczytano każde pole, i pozwala wybrać wartość ze zdjęcia. Klasyczny to stabilny odczyt; możesz tu wrócić do niego w każdej chwili.'
   },
 
   review: {
@@ -319,6 +324,12 @@ const pl: Translations = {
     rejectReasonRequired: 'Wyjaśnij, dlaczego odrzucasz ten wydatek.',
     openDocument: 'Otwórz dokument',
     loadingPreview: 'Ładowanie podglądu…',
+    pickFromPhoto: 'Wybierz ze zdjęcia',
+    pickHint: 'Zaznacz na zdjęciu ramką: {field}',
+    pickReading: 'Odczytywanie zaznaczonego obszaru…',
+    pickNothing: 'W tym obszarze nie ma nic czytelnego. Zaznacz ramkę ponownie.',
+    pickFailed: 'Nie udało się odczytać zaznaczonego obszaru. Spróbuj ponownie.',
+    boxesFailed: 'Nie udało się teraz znaleźć pól na dokumencie. Zostaną wyszukane ponownie następnym razem.',
     vendorSection: 'Dostawca',
     vendorName: 'Nazwa dostawcy',
     taxId: 'NIP',

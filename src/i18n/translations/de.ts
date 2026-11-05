@@ -277,7 +277,12 @@ const de: Translations = {
     currencyConverterHint: 'Für die Umrechnung von Belegen und die Bepreisung von Rohstoffen. „Freier Markt“ ist noch nicht angebunden.',
     pricingSection: 'Rohstoffpreise',
     materialMatcher: 'Rohstoffe zuordnen mit',
-    materialMatcherHint: 'Die KI, die für jeden Rohstoff eine Indexkategorie vorschlägt. Hier wechseln, wenn eine Ihre Bezeichnungen schlecht versteht; jeder Vorschlag wird weiterhin von einer Person geprüft.'
+    materialMatcherHint: 'Die KI, die für jeden Rohstoff eine Indexkategorie vorschlägt. Hier wechseln, wenn eine Ihre Bezeichnungen schlecht versteht; jeder Vorschlag wird weiterhin von einer Person geprüft.',
+    invoiceReadingSection: 'Rechnungen lesen',
+    invoiceReader: 'Rechnungen lesen mit',
+    invoiceReaderClassic: 'Klassisch (stabil)',
+    invoiceReaderTemplate: 'Vorlagenbasiert (Beta)',
+    invoiceReaderHint: 'Vorlagenbasiert zeigt auf dem Foto, wo jedes Feld gelesen wurde, und lässt Sie einen Wert aus dem Foto auswählen. Klassisch ist das stabile Lesen; Sie können hier jederzeit zurückwechseln.'
   },
 
   review: {
@@ -321,6 +326,12 @@ const de: Translations = {
     rejectReasonRequired: 'Bitte erklären Sie, warum Sie diese Ausgabe ablehnen.',
     openDocument: 'Dokument öffnen',
     loadingPreview: 'Vorschau wird geladen…',
+    pickFromPhoto: 'Aus Foto wählen',
+    pickHint: 'Ziehen Sie auf dem Foto einen Rahmen um: {field}',
+    pickReading: 'Der gewählte Bereich wird gelesen…',
+    pickNothing: 'In diesem Bereich ist nichts lesbar. Ziehen Sie den Rahmen erneut.',
+    pickFailed: 'Der gewählte Bereich konnte nicht gelesen werden. Versuchen Sie es erneut.',
+    boxesFailed: 'Die Felder konnten gerade nicht auf dem Dokument gefunden werden. Beim nächsten Mal wird erneut gesucht.',
     vendorSection: 'Anbieter',
     vendorName: 'Anbietername',
     taxId: 'Steuernummer',

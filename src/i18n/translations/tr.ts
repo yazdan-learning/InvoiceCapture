@@ -277,7 +277,12 @@ const tr: Translations = {
     currencyConverterHint: 'Fişleri dönüştürmek ve hammaddeleri fiyatlandırmak için kullanılır. “Serbest piyasa” henüz bağlı değil.',
     pricingSection: 'Hammadde fiyatlandırma',
     materialMatcher: 'Hammaddeleri eşleştiren',
-    materialMatcherHint: 'Her hammadde için endeks kategorisi öneren yapay zekâ. Biri adlarınızı iyi anlamıyorsa buradan değiştirin; her öneriyi yine bir kişi kontrol eder.'
+    materialMatcherHint: 'Her hammadde için endeks kategorisi öneren yapay zekâ. Biri adlarınızı iyi anlamıyorsa buradan değiştirin; her öneriyi yine bir kişi kontrol eder.',
+    invoiceReadingSection: 'Fatura okuma',
+    invoiceReader: 'Faturaları okuyan',
+    invoiceReaderClassic: 'Klasik (kararlı)',
+    invoiceReaderTemplate: 'Şablon tabanlı (beta)',
+    invoiceReaderHint: 'Şablon tabanlı mod, her alanın fotoğrafta nereden okunduğunu gösterir ve fotoğraftan değer seçmenizi sağlar. Klasik, kararlı okumadır; buradan istediğiniz zaman geri dönebilirsiniz.'
   },
 
   review: {
@@ -321,6 +326,12 @@ const tr: Translations = {
     rejectReasonRequired: 'Lütfen bu gideri neden reddettiğinizi açıklayın.',
     openDocument: 'Belgeyi aç',
     loadingPreview: 'Önizleme yükleniyor…',
+    pickFromPhoto: 'Fotoğraftan seç',
+    pickHint: 'Fotoğrafta şunun etrafına bir kutu çizin: {field}',
+    pickReading: 'Seçilen alan okunuyor…',
+    pickNothing: 'Bu alanda okunabilir bir şey yok. Kutuyu yeniden çizin.',
+    pickFailed: 'Seçilen alan okunamadı. Yeniden deneyin.',
+    boxesFailed: 'Alanlar şu anda belgede bulunamadı. Bir dahaki sefere yeniden aranacak.',
     vendorSection: 'Satıcı',
     vendorName: 'Satıcı adı',
     taxId: 'Vergi No',

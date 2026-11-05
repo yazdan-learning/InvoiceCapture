@@ -17,6 +17,8 @@ import { UnconfiguredDistanceCalculator } from './adapters/unconfigured-distance
 import { asyncHandler } from '../shared/asyncHandler';
 import { validate } from '../shared/validate';
 import { FileStorage, InvoiceExtractor } from './ports';
+import { createReadingService } from '../reading/reading.service';
+import { createReadingRouter } from '../reading/reading.routes';
 import {
   approveSchema,
   createMileageSchema,
@@ -68,6 +70,18 @@ const expensesService = createExpensesService({
     : new UnconfiguredDistanceCalculator()
 });
 const expensesController = createExpensesController(expensesService);
+
+// Field boxes and "pick from photo" (organizations on the template-guided
+// reader): read with the vision model, or with the main LLM when no separate
+// vision model is configured.
+const readingService = createReadingService({
+  expenses: expensesService,
+  fileStorage,
+  vision: () =>
+    env.vision.apiKey
+      ? new OpenAiCompatibleLlm({ ...env.vision, models: { fast: env.vision.model, smart: env.vision.model } })
+      : new OpenAiCompatibleLlm({ ...env.llm, timeoutMs: env.aiTimeoutMs })
+});
 
 export const expensesRouter = Router();
 
@@ -159,3 +173,5 @@ expensesRouter.post(
   validate(rejectSchema, 'body'),
   asyncHandler(expensesController.reject)
 );
+
+expensesRouter.use(createReadingRouter(readingService));

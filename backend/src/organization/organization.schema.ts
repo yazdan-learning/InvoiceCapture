@@ -5,6 +5,7 @@ import { APP_MODULES } from './modules';
 import { ACCOUNTING_CONNECTOR_IDS } from '../accounting/registry';
 import { CURRENCY_CONVERTER_IDS } from '../currency/registry';
 import { MATERIAL_MATCHER_IDS } from '../pricing/matchers/registry';
+import { INVOICE_READER_IDS } from '../reading/registry';
 
 export const updateOrganizationSettingsSchema = z
   .object({
@@ -20,7 +21,8 @@ export const updateOrganizationSettingsSchema = z
       .optional(),
     accountingConnector: z.enum(ACCOUNTING_CONNECTOR_IDS).optional(),
     currencyConverter: z.enum(CURRENCY_CONVERTER_IDS).optional(),
-    materialMatcher: z.enum(MATERIAL_MATCHER_IDS).optional()
+    materialMatcher: z.enum(MATERIAL_MATCHER_IDS).optional(),
+    invoiceReader: z.enum(INVOICE_READER_IDS).optional()
   })
   .refine((data) => Object.values(data).some((value) => value !== undefined), {
     message: 'Provide at least one setting to update'
