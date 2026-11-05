@@ -1,3 +1,4 @@
+import { lineFlags, parsePrintedSavings, smallGapCents, suggestCorrections, totalGapCents } from '@yazdan-learning/ai';
 import { LlmClient } from '../ai/gateway/llm';
 import { LocateTarget } from '../ai/prompts/field-boxes';
 import { num, westernDigits } from '../ai/replies';
@@ -32,7 +33,7 @@ export type ReadableExpense = {
   currency: string | null;
   originalCurrency: string | null;
   exchangeRate: Amount;
-  items: { description: string; totalPrice: Amount }[];
+  items: { description: string; totalPrice: Amount; quantity?: Amount; unitPrice?: Amount }[];
 } & Record<string, unknown>;
 
 type Deps = {
@@ -42,6 +43,25 @@ type Deps = {
   vision: () => LlmClient;
   repository?: ReadingRepository;
 };
+
+/** What the shared checks say about each line item, for the review page (template-guided reader only). */
+export type ReadingChecksResponse = {
+  enabled: boolean;
+  lines: {
+    index: number;
+    /** quantity × unit price disagrees with the line's total. */
+    quantityTimesPrice?: { quantity: number; unitPrice: number; expected: number };
+    /** A one-digit misread that makes the lines add up to the total (0,65 → 0,85). */
+    suggested?: number;
+    level?: 'confirmed' | 'likely';
+    /** The gap may be on this line: compare it with the document. */
+    compare?: boolean;
+  }[];
+  /** The photo is very small, so digits may be misread. */
+  smallImage: boolean;
+};
+
+const amount = (value: Amount | undefined): number | null => (value === null || value === undefined ? null : Number(value.toString()));
 
 export type FieldBoxesResponse = {
   enabled: boolean;
@@ -154,6 +174,42 @@ export function createReadingService({ expenses, fileStorage, vision, repository
         boxes: await repository.listBoxes(id),
         ...(error ? { error } : {})
       };
+    },
+
+    /**
+     * The checks on the line items as they are now (after the user's edits):
+     * quantity × unit price per line, and — when the lines are a little off the
+     * total — the likely misread digit. Line items are never converted, so
+     * they are compared with the total before the exchange rate.
+     */
+    async getReadingChecks(organizationId: string, id: string, actor: Actor): Promise<ReadingChecksResponse> {
+      const expense = await expenses.getById(organizationId, id, actor);
+      const { enabled } = await enabledFor(organizationId);
+      if (!enabled) return { enabled: false, lines: [], smallImage: false };
+      const raw = expense.rawExtraction as { ocrText?: unknown; template?: { smallImage?: unknown } } | null;
+      const reading = {
+        totalAmount: amount((expense.originalTotalAmount ?? expense.totalAmount) as Amount),
+        items: expense.items.map((item) => ({
+          description: item.description,
+          quantity: amount(item.quantity),
+          unitPrice: amount(item.unitPrice),
+          totalPrice: amount(item.totalPrice)
+        }))
+      };
+      const lines = new Map<number, ReadingChecksResponse['lines'][number]>();
+      const at = (index: number) => lines.get(index) ?? (lines.set(index, { index }), lines.get(index)!);
+      for (const f of lineFlags(reading)) {
+        at(f.line).quantityTimesPrice = { quantity: f.quantity, unitPrice: f.unitPriceCents / 100, expected: f.expectedCents / 100 };
+      }
+      // Digit suggestions only for a small gap: a big one is lines shifted or missed, or net prices.
+      const gap = totalGapCents(reading);
+      if (gap !== null && smallGapCents({ problems: [{ code: 'total_mismatch', message: '', detail: { diffCents: gap, totalCents: Math.round((reading.totalAmount ?? 0) * 100) } }] }) !== null) {
+        const ocrText = typeof raw?.ocrText === 'string' ? raw.ocrText : undefined;
+        const { suggestions, checkLines } = suggestCorrections(reading, { printedSavingsCents: parsePrintedSavings(ocrText) });
+        for (const s of suggestions) Object.assign(at(s.line), { suggested: s.toCents / 100, level: s.level });
+        for (const index of checkLines) at(index).compare = true;
+      }
+      return { enabled: true, lines: [...lines.values()].sort((a, b) => a.index - b.index), smallImage: raw?.template?.smallImage === true };
     },
 
     async getPageImage(organizationId: string, id: string, page: number, actor: Actor): Promise<Buffer> {

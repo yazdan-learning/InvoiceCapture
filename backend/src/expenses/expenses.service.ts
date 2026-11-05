@@ -118,11 +118,13 @@ export function createExpensesService({
       // The country decides the prompt rules, the calendar dates are read in,
       // and whether "handwritten" applies at all.
       const country = getCountryProfile(await expensesRepository.getOrganizationCountry(organizationId));
+      // CLASSIC or TEMPLATE: the extractor picks the reader by it.
+      const reader = await expensesRepository.getOrganizationReader(organizationId);
 
       let extraction: Awaited<ReturnType<InvoiceExtractor['extract']>> | null = null;
       let errorMessage: string | null = null;
       try {
-        extraction = await extractor.extract(file, { ...extractOptions, country });
+        extraction = await extractor.extract(file, { ...extractOptions, country, reader });
       } catch (err) {
         errorMessage = err instanceof Error ? err.message : 'Extraction failed';
       }

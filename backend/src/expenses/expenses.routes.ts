@@ -8,6 +8,7 @@ import { createExpensesController } from './expenses.controller';
 import { createExpensesService } from './expenses.service';
 import { N8nInvoiceExtractor } from './adapters/n8n-extractor';
 import { DirectInvoiceExtractor } from './adapters/direct-extractor';
+import { ReaderSwitchExtractor, TemplateInvoiceExtractor } from '../reading/template-extractor';
 import { MistralOcr } from '../ai/gateway/mistral-ocr';
 import { OpenAiCompatibleLlm } from '../ai/gateway/openai-compatible';
 import { LocalDiskFileStorage } from './adapters/local-disk-storage';
@@ -50,16 +51,22 @@ const upload = multer({
 const fileStorage: FileStorage =
   env.fileStorageProvider === 's3' ? new S3FileStorage(env.s3) : new LocalDiskFileStorage(env.uploadsDir);
 
+function directExtractor(): InvoiceExtractor {
+  const ocr = new MistralOcr({ ...env.ocr, timeoutMs: env.aiTimeoutMs });
+  const classic = new DirectInvoiceExtractor(
+    ocr,
+    new OpenAiCompatibleLlm({ ...env.llm, timeoutMs: env.aiTimeoutMs }),
+    env.vision.apiKey ? new OpenAiCompatibleLlm({ ...env.vision, models: { fast: env.vision.model, smart: env.vision.model } }) : undefined
+  );
+  // TEMPLATE organizations: the classic reading plus the shared checks (reading/template-extractor.ts).
+  const large = env.llm.largeModel
+    ? new OpenAiCompatibleLlm({ ...env.llm, models: { fast: env.llm.largeModel, smart: env.llm.largeModel }, timeoutMs: env.aiTimeoutMs })
+    : null;
+  return new ReaderSwitchExtractor(classic, new TemplateInvoiceExtractor(classic, ocr, large));
+}
+
 const extractor: InvoiceExtractor =
-  env.invoiceExtractor === 'n8n'
-    ? new N8nInvoiceExtractor({ baseUrl: env.n8nBaseUrl, extractPath: env.n8nExtractPath })
-    : new DirectInvoiceExtractor(
-        new MistralOcr({ ...env.ocr, timeoutMs: env.aiTimeoutMs }),
-        new OpenAiCompatibleLlm({ ...env.llm, timeoutMs: env.aiTimeoutMs }),
-        env.vision.apiKey
-          ? new OpenAiCompatibleLlm({ ...env.vision, models: { fast: env.vision.model, smart: env.vision.model } })
-          : undefined
-      );
+  env.invoiceExtractor === 'n8n' ? new N8nInvoiceExtractor({ baseUrl: env.n8nBaseUrl, extractPath: env.n8nExtractPath }) : directExtractor();
 
 const expensesService = createExpensesService({
   extractor,

@@ -8,6 +8,7 @@ import {
   getExpenseFileBlobUrl,
   getFieldBoxes,
   getMileageRate,
+  getReadingChecks,
   getSupportedCurrencies,
   listExpenses,
   previewMileageDistance,
@@ -16,7 +17,7 @@ import {
   submitExpense,
   updateExpense
 } from '../api';
-import type { FieldBoxes, Region } from '../api';
+import type { FieldBoxes, ReadingChecks, Region } from '../api';
 import { Category, Expense } from '../types';
 import { DocumentViewer } from '../components/DocumentViewer';
 import { IconPickRegion } from '../components/icons';
@@ -136,6 +137,7 @@ const READING_WARNINGS: { match: RegExp; key: string }[] = [
   { match: /paid the other invoices of this file/, key: 'review.notInTransfer' },
   { match: /corrected to match the bank transfer/, key: 'review.paidAmountFitted' },
   { match: /do not match the bank transfer/, key: 'review.paidAmountDiffers' },
+  { match: /far off the invoice total/, key: 'review.amountsFarOff' },
   { match: /items do not add up/, key: 'review.amountsUnchecked' }
 ];
 
@@ -211,6 +213,9 @@ export function ExpenseReviewPage() {
   // box on each field where it was read, and "pick from photo". Off for the
   // classic reader, which keeps the plain preview.
   const [fieldBoxes, setFieldBoxes] = useState<FieldBoxes | null>(null);
+  // Template-guided reading: per line item, quantity × price and the likely misread digit.
+  const [readingChecks, setReadingChecks] = useState<ReadingChecks | null>(null);
+  const [fixingLine, setFixingLine] = useState<number | null>(null);
   const [activeField, setActiveField] = useState<string | null>(null);
   const [pickingField, setPickingField] = useState<PickField | null>(null);
   const [pickStatus, setPickStatus] = useState<'reading' | 'nothing' | 'failed' | null>(null);
@@ -288,6 +293,75 @@ export function ExpenseReviewPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, expense?.expenseType]);
+
+  // Asked again whenever the line items change (a suggestion used).
+  useEffect(() => {
+    if (!id || !expense || expense.expenseType === 'MILEAGE') return;
+    let cancelled = false;
+    getReadingChecks(id)
+      .then((result) => {
+        if (!cancelled) setReadingChecks(result.enabled ? result : null);
+      })
+      .catch(() => {
+        if (!cancelled) setReadingChecks(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, expense?.expenseType, expense?.items]);
+
+  /** Puts a suggested price on one line item; the rest of the form (maybe edited, not saved yet) is left alone. */
+  const applyLinePrice = async (index: number, price: number) => {
+    if (!expense) return;
+    const number = (v: string | null) => (v === null ? null : Number(v));
+    const items = expense.items.map((item, i) => {
+      const line = { description: item.description, quantity: number(item.quantity), unitPrice: number(item.unitPrice), totalPrice: number(item.totalPrice), taxRate: number(item.taxRate) };
+      if (i !== index) return line;
+      // One piece: its unit price is the line's price too.
+      return { ...line, totalPrice: price, unitPrice: line.quantity === null || line.quantity === 1 ? price : line.unitPrice };
+    });
+    setFixingLine(index);
+    try {
+      const updated = await updateExpense(expense.id, { items });
+      setExpense((prev) => (prev ? { ...prev, items: updated.items } : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('review.saveDraftFailed'));
+    } finally {
+      setFixingLine(null);
+    }
+  };
+
+  /** Under a line item: what the checks say about its price, with one click to use a suggested one. */
+  const lineCheck = (index: number) => {
+    const check = readingChecks?.lines.find((l) => l.index === index);
+    if (!check || !expense) return null;
+    const money = (value: number) => formatAmount(value, expense.currency, { withCode: false });
+    const use = (price: number) =>
+      isEditable ? (
+        <button className="alert-action" type="button" disabled={fixingLine !== null} onClick={() => void applyLinePrice(index, price)}>
+          {t('review.usePrice', { amount: money(price) })}
+        </button>
+      ) : null;
+    if (check.suggested !== undefined) {
+      return (
+        <span className="line-item-check">
+          {t(check.level === 'confirmed' ? 'review.priceConfirmed' : 'review.priceMaybe', { amount: money(check.suggested) })}
+          {use(check.suggested)}
+        </span>
+      );
+    }
+    if (check.quantityTimesPrice) {
+      const q = check.quantityTimesPrice;
+      return (
+        <span className="line-item-check">
+          {t('review.quantityTimesPrice', { quantity: String(q.quantity), unit: money(q.unitPrice), expected: money(q.expected) })}
+          {use(q.expected)}
+        </span>
+      );
+    }
+    return check.compare ? <span className="line-item-check line-item-check--soft">{t('review.comparePrice')}</span> : null;
+  };
 
   const boxLabel = (field: string) => {
     const item = /^items\.(\d+)$/.exec(field);
@@ -1108,6 +1182,7 @@ export function ExpenseReviewPage() {
               {expense.items.length > 0 && (
                 <div className="form-section">
                   <h3>{t('review.lineItems')}</h3>
+                  {readingChecks?.smallImage && readingChecks.lines.length > 0 && <p className="viewer-note">{t('review.smallPhoto')}</p>}
                   {/* A table doesn't fit a phone: there each item is a row of its own (description, qty × price, total). */}
                   {isDesktop ? (
                     <div className="invoice-table-wrap">
@@ -1123,7 +1198,10 @@ export function ExpenseReviewPage() {
                         <tbody>
                           {expense.items.map((item, index) => (
                             <tr key={item.id} onMouseEnter={() => setActiveField(`items.${index}`)}>
-                              <td dir="auto">{item.description}</td>
+                              <td dir="auto">
+                                {item.description}
+                                {lineCheck(index)}
+                              </td>
                               <td className="align-right">{formatQuantity(item.quantity)}</td>
                               <td className="align-right">{formatAmount(item.unitPrice, expense.currency, { withCode: false })}</td>
                               <td className="align-right">{formatAmount(item.totalPrice, expense.currency, { withCode: false })}</td>
@@ -1143,6 +1221,7 @@ export function ExpenseReviewPage() {
                             <span className="line-item-sub">
                               {formatQuantity(item.quantity)} × {formatAmount(item.unitPrice, expense.currency, { withCode: false })}
                             </span>
+                            {lineCheck(index)}
                           </span>
                           <span className="line-item-total">{formatAmount(item.totalPrice, expense.currency, { withCode: false })}</span>
                         </li>

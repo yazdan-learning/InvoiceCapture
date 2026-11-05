@@ -126,6 +126,11 @@ access), `ADMIN`.
 
 ## Local setup
 
+The backend needs the shared AI package next to this repo: clone the private repo
+`yazdan-learning/ai-packages` into `../ai-packages` (it is installed from
+`file:../../ai-packages` until it is published to GitHub Packages) and run `npm install` there
+first, which builds it.
+
 ```bash
 cp .env.example .env          # adjust ports if they collide with other local services
 docker compose up -d          # Postgres
@@ -319,6 +324,22 @@ back is that setting only. So far `TEMPLATE` reads with the same extractor and a
   invoice) and returns the value, converted to the form's units (Toman as Rial, the exchange
   rate when converted, Shamsi dates to ISO; a total that lost trailing zeros is fitted to the
   line items). The region is kept as the field's `USER` box.
+
+- **Shared checks** (`template-extractor.ts`, from `@yazdan-learning/ai`, the
+  package shared with Nestmate): a photo under 600 px on its short side is enlarged 2× (for the
+  OCR and the re-read; the stored file stays the original), then the file is OCR'd first; a receipt without Persian text in an
+  Iranian organization is read with the international rules. VAT codes read as quantities
+  (dm's "2,95 2") are taken out when the total and every VAT group then add up. With
+  `LLM_MODEL_LARGE` set, an invoice that still doesn't add up gets one last look with that
+  model. One that is far off its total gets `AMOUNTS_FAR_OFF` instead of `AMOUNTS_UNCHECKED`.
+  Handwritten invoices are read as in `CLASSIC` (vision model plus OCR alongside), with a small
+  photo enlarged. In a file with several invoices, each one gets the far-off warning (the
+  VAT-code fix and the last look are for single invoices). `rawExtraction.template.mode` says
+  which path was taken (`printed`, `handwritten`, `several`). `CLASSIC` uses the same package for
+  its gateway and checks, with its behaviour unchanged.
+- **Line checks** (`GET /api/expenses/:id/reading-checks`): per line item, quantity × unit
+  price, and when the items are a little off the total, the likely misread digit (checked
+  against the printed savings). The review page shows them with one click to use the price.
 
 Every upload also keeps `Expense.initialReading`, what the AI read, so it can be compared with
 what the user saved. Template matching (vendor keys, printed words) comes next.

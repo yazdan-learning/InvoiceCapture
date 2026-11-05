@@ -2843,3 +2843,22 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+/* Template-guided reading: what the checks say about a line item's price. */
+.line-item-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #78350f;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.line-item-check--soft {
+  background: #f1f5f9;
+  color: #475569;
+}

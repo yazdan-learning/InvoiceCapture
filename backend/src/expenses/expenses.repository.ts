@@ -212,6 +212,12 @@ export const expensesRepository = {
     return org.defaultCurrency;
   },
 
+  /** Organization.invoiceReader: CLASSIC or TEMPLATE (see reading/registry.ts). */
+  async getOrganizationReader(organizationId: string): Promise<string> {
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { invoiceReader: true } });
+    return org.invoiceReader;
+  },
+
   async getOrganizationCountry(organizationId: string): Promise<string> {
     const org = await prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },

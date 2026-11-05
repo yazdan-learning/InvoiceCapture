@@ -31,6 +31,14 @@ export function createReadingRouter(reading: ReadingService): Router {
   );
 
   router.get(
+    '/:id/reading-checks',
+    validate(expenseParams, 'params'),
+    asyncHandler(async (req: Request, res: Response) => {
+      res.json(await reading.getReadingChecks(req.actor.organizationId, req.params.id, req.actor));
+    })
+  );
+
+  router.get(
     '/:id/pages/:page',
     validate(pageParams, 'params'),
     asyncHandler(async (req: Request, res: Response) => {

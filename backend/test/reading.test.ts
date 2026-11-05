@@ -193,3 +193,44 @@ describe('reading service', () => {
     await expect(sent.reading.readRegion('org', 'e1', actor, { field: 'totalAmount', page: 0, region })).rejects.toThrow('no longer be edited');
   });
 });
+
+describe('getReadingChecks', () => {
+  // The Lidl receipt: 0,85 read as 0,65 and -0,48 as -0,40, so the lines are 12 cents short.
+  const lidl = (overrides: Partial<ReadableExpense> = {}) =>
+    expense({
+      currency: 'EUR',
+      totalAmount: 16.72,
+      rawExtraction: { provider: 'direct', ocrText: '| Gesamter Preisvorteil |\n| 1,83 EUR gespart |', template: { smallImage: true } },
+      items: [
+        ['Snack Gurken', 1, 1.49, 1.49],
+        ['Lidl Plus Rabatt', 1, -0.15, -0.15],
+        ['Cherrystrauchtomaten', 2, 4.49, 8.98],
+        ['Bio Milch', 3, 1.35, 4.05],
+        ['Lidl Plus Rabatt', 1, -0.4, -0.4],
+        ['Bioland Haferfl.zart', 1, 0.65, 0.65],
+        ['Schokotröpfchen', 2, 1.59, 3.18],
+        ['Preisvorteil', 1, -1.2, -1.2]
+      ].map(([description, quantity, unitPrice, totalPrice]) => ({ description: String(description), quantity, unitPrice, totalPrice })) as ReadableExpense['items'],
+      ...overrides
+    });
+
+  it('suggests the misread price and marks the lines to compare', async () => {
+    const { reading } = await service({ expense: lidl() });
+    const checks = await reading.getReadingChecks('org', 'e1', actor);
+    expect(checks.smallImage).toBe(true);
+    expect(checks.lines.find((l) => l.index === 5)).toEqual({ index: 5, suggested: 0.85, level: 'likely' });
+    expect(checks.lines.filter((l) => l.compare).map((l) => l.index)).toEqual([4, 7]);
+  });
+
+  it('flags quantity × unit price and leaves a far-off total without guesses', async () => {
+    const { reading } = await service({
+      expense: lidl({ totalAmount: 30, items: [{ description: 'Tomaten', quantity: 2, unitPrice: 4.49, totalPrice: 8.9 }] as ReadableExpense['items'] })
+    });
+    expect((await reading.getReadingChecks('org', 'e1', actor)).lines).toEqual([{ index: 0, quantityTimesPrice: { quantity: 2, unitPrice: 4.49, expected: 8.98 } }]);
+  });
+
+  it('is off for the classic reader', async () => {
+    const { reading } = await service({ reader: 'CLASSIC', expense: lidl() });
+    expect(await reading.getReadingChecks('org', 'e1', actor)).toEqual({ enabled: false, lines: [], smallImage: false });
+  });
+});

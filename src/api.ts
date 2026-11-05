@@ -158,6 +158,8 @@ export type UpdateExpensePayload = Partial<{
   mileageTo: string | null;
   mileageDistanceKm: number | null;
   mileageRoundTrip: boolean;
+  /** Replaces every line item. */
+  items: { description: string; quantity: number | null; unitPrice: number | null; totalPrice: number | null; taxRate: number | null }[];
 }>;
 
 export async function updateExpense(
@@ -276,6 +278,24 @@ export type FieldBoxes = {
 };
 
 export type Region = { x: number; y: number; width: number; height: number };
+
+/** What the checks say about each line item (template-guided reader only; backend/src/reading/reading.service.ts). */
+export type ReadingChecks = {
+  enabled: boolean;
+  lines: {
+    index: number;
+    quantityTimesPrice?: { quantity: number; unitPrice: number; expected: number };
+    suggested?: number;
+    level?: 'confirmed' | 'likely';
+    compare?: boolean;
+  }[];
+  smallImage: boolean;
+};
+
+export async function getReadingChecks(id: string, apiBaseUrl = defaultBaseUrl): Promise<ReadingChecks> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}/reading-checks`, apiBaseUrl), { headers: authHeaders() });
+  return parseJsonOrThrow(response);
+}
 
 export async function getFieldBoxes(id: string, apiBaseUrl = defaultBaseUrl): Promise<FieldBoxes> {
   const response = await fetch(apiUrl(`/api/expenses/${id}/field-boxes`, apiBaseUrl), { headers: authHeaders() });
