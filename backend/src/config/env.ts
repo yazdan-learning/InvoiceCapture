@@ -26,7 +26,10 @@ export const env = {
     models: {
       fast: process.env.LLM_MODEL_FAST || 'mistral-medium-latest',
       smart: process.env.LLM_MODEL_SMART || 'mistral-medium-latest'
-    }
+    },
+    // The template-guided reader's last look at an invoice that still doesn't add up. Empty = skipped:
+    // in November 2026 mistral-large-latest read the test receipts no better than medium.
+    largeModel: process.env.LLM_MODEL_LARGE || ''
   },
   // A separate vision model for handwritten invoices (Mistral can't read Persian
   // handwriting). Any OpenAI-compatible API; Gemini by default. Without

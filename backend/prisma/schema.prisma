@@ -46,7 +46,12 @@ model Organization {
   // both) — see backend/src/pricing/matchers/registry.ts.
   materialMatcher String @default("LLM")
 
-  users        User[]
+  // How uploaded invoices are read (CLASSIC = the stable extractor; TEMPLATE =
+  // the template-guided reader, which also shows on the photo where each field
+  // was read) — see backend/src/reading/registry.ts. Switching back is this setting only.
+  invoiceReader String @default("CLASSIC")
+
+  users       User[]
   expenses     Expense[]
   categories   Category[]
   rawMaterials RawMaterial[]
@@ -191,6 +196,13 @@ model Expense {
 
   rawExtraction Json?
   errorMessage  String?
+  // What the AI read, as saved at upload (stored units, before currency
+  // conversion) and never touched by later edits: compared with the final
+  // values it shows what the user corrected (evaluation, template learning).
+  initialReading Json?
+  // When the field boxes were located on the page images (even if none were
+  // found), so they are looked for only once.
+  boxesLocatedAt DateTime?
 
   // Purchase invoices only: when it went to the accounting system, the id it
   // got there (if the connector returns one), and why the last attempt failed.
@@ -211,8 +223,9 @@ model Expense {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  items     ExpenseLineItem[]
-  approvals Approval[]
+  items      ExpenseLineItem[]
+  approvals  Approval[]
+  fieldBoxes ExpenseFieldBox[]
 
   @@index([organizationId, status])
   @@index([organizationId, vendorName, invoiceNumber])
@@ -257,6 +270,33 @@ model ExpenseLineItem {
   totalPrice  Decimal? @db.Decimal(18, 2)
   taxRate     Decimal? @db.Decimal(5, 2)
   sortOrder   Int      @default(0)
+}
+
+enum FieldBoxSource {
+  MODEL // located by the vision model on the reading's values
+  USER // drawn by the user ("pick from photo"), the value read from that region
+}
+
+// Where on the document a field was read: a box on one page image (see
+// backend/src/reading/page-images.ts), in 0–1 fractions of the page's width and
+// height. One per field and source; field is a form field ("invoiceNumber",
+// "totalAmount") or a line item ("items.2").
+model ExpenseFieldBox {
+  id        String         @id @default(uuid())
+  expenseId String
+  expense   Expense        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  field     String
+  source    FieldBoxSource
+  page      Int
+  x         Float
+  y         Float
+  width     Float
+  height    Float
+  // For USER boxes: what was read from the region.
+  value     String?
+  createdAt DateTime       @default(now())
+
+  @@unique([expenseId, field, source])
 }
 
 // ─── Raw-material pricing (RAW_MATERIAL_PRICING module) ─────────────────────

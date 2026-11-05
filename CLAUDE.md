@@ -7,6 +7,10 @@ Backend architecture, data model, endpoints and the ASR integration:
 ## Layout
 
 - `src/` — React 18 + Vite frontend. `src/api.ts` is the only place that calls the backend.
+- `../ai-packages/` — `@yazdan-learning/ai`, a private repo shared with Nestmate: OCR/LLM
+  gateway, retries, the checks on a reading and enlarging small photos. Both readers use it:
+  `backend/src/ai/gateway/`, `errors.ts`, `retry.ts` and `invoice-checks.ts` re-export or build
+  on it. Installed from `file:../../ai-packages` until it is published to GitHub Packages.
 - `backend/` — Express + Prisma/PostgreSQL. Feature folders (`routes → controller → service →
   repository`); ports/adapters only where providers change: `src/expenses/ports.ts` +
   `adapters/`, `src/accounting/ports.ts` + `connectors/`, `src/currency/`, `src/pricing/ports.ts` + `matchers/`
@@ -47,6 +51,12 @@ rows; to inspect data, run a small `tsx` script with the Prisma client.
 - **Material matchers** (`Organization.materialMatcher`): `LLM`, `JEV`, `COMBINED` in
   `backend/src/pricing/matchers/`. The price index is sample data
   (`adapters/sample-price-index-source.ts`) until the BLS API is confirmed.
+- **Invoice readers** (`Organization.invoiceReader`): `CLASSIC` (the stable extractor, tag
+  `extractor-classic-v1`, on the shared package's gateway and checks) and `TEMPLATE`
+  (template-guided, `backend/src/reading/`, for every kind of file: printed, handwritten, several
+  invoices in one file; small-photo enlarging, VAT-code fix, foreign receipts, line checks, field
+  boxes, pick from photo; template matching next). Keep `CLASSIC`'s behaviour unchanged: new
+  reading behaviour goes behind `TEMPLATE`, which replaces `CLASSIC` once it is stable.
 - **Amounts** in the UI go through `src/lib/money.ts` and `AmountInput` (thousands separators).
 - **Translations**: every new UI string goes into all four files in `src/i18n/translations/`
   (en, de, pl, tr).

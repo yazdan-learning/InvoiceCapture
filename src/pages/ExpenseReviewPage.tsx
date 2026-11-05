@@ -6,15 +6,21 @@ import {
   getCategories,
   getExpense,
   getExpenseFileBlobUrl,
+  getFieldBoxes,
   getMileageRate,
+  getReadingChecks,
   getSupportedCurrencies,
   listExpenses,
   previewMileageDistance,
+  readRegion,
   sendInvoiceToAccounting,
   submitExpense,
   updateExpense
 } from '../api';
+import type { FieldBoxes, ReadingChecks, Region } from '../api';
 import { Category, Expense } from '../types';
+import { DocumentViewer } from '../components/DocumentViewer';
+import { IconPickRegion } from '../components/icons';
 import { StatusPill } from '../components/StatusPill';
 import { LocationAutocompleteInput } from '../components/LocationAutocompleteInput';
 import { RouteMap } from '../components/RouteMap';
@@ -131,6 +137,7 @@ const READING_WARNINGS: { match: RegExp; key: string }[] = [
   { match: /paid the other invoices of this file/, key: 'review.notInTransfer' },
   { match: /corrected to match the bank transfer/, key: 'review.paidAmountFitted' },
   { match: /do not match the bank transfer/, key: 'review.paidAmountDiffers' },
+  { match: /far off the invoice total/, key: 'review.amountsFarOff' },
   { match: /items do not add up/, key: 'review.amountsUnchecked' }
 ];
 
@@ -142,6 +149,36 @@ function readingWarnings(errorMessage: string): { key: string; count?: string }[
   });
   return found.length || handwrittenFields(errorMessage) ? found : [{ key: 'review.amountsUnchecked' }];
 }
+
+// Template-guided reading: the fields that have a box on the document and can
+// be picked from it (backend/src/reading/fields.ts), with their labels.
+const PICK_FIELDS = [
+  'vendorName',
+  'vendorTaxId',
+  'vendorAddress',
+  'invoiceNumber',
+  'invoiceDate',
+  'dueDate',
+  'subtotal',
+  'discountAmount',
+  'taxAmount',
+  'totalAmount'
+] as const;
+type PickField = (typeof PICK_FIELDS)[number];
+const isPickField = (field: string): field is PickField => (PICK_FIELDS as readonly string[]).includes(field);
+const AMOUNT_FIELDS: readonly PickField[] = ['subtotal', 'discountAmount', 'taxAmount', 'totalAmount'];
+const BOX_LABELS: Record<PickField, string> = {
+  vendorName: 'review.vendorName',
+  vendorTaxId: 'review.taxId',
+  vendorAddress: 'review.vendorAddress',
+  invoiceNumber: 'review.invoiceNumber',
+  invoiceDate: 'review.invoiceDate',
+  dueDate: 'review.dueDate',
+  subtotal: 'review.subtotal',
+  discountAmount: 'review.discount',
+  taxAmount: 'review.taxAmount',
+  totalAmount: 'review.totalAmount'
+};
 
 export function ExpenseReviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -172,6 +209,17 @@ export function ExpenseReviewPage() {
   // Purchase invoices: the next one waiting to be checked, so sending moves straight on to it.
   const [nextInvoiceId, setNextInvoiceId] = useState<string | null>(null);
   const lastCalculatedRef = useRef<{ from: string; to: string } | null>(null);
+  // Template-guided reading (Settings → Invoice reading): the document with a
+  // box on each field where it was read, and "pick from photo". Off for the
+  // classic reader, which keeps the plain preview.
+  const [fieldBoxes, setFieldBoxes] = useState<FieldBoxes | null>(null);
+  // Template-guided reading: per line item, quantity × price and the likely misread digit.
+  const [readingChecks, setReadingChecks] = useState<ReadingChecks | null>(null);
+  const [fixingLine, setFixingLine] = useState<number | null>(null);
+  const [activeField, setActiveField] = useState<string | null>(null);
+  const [pickingField, setPickingField] = useState<PickField | null>(null);
+  const [pickStatus, setPickStatus] = useState<'reading' | 'nothing' | 'failed' | null>(null);
+  const asideRef = useRef<HTMLDivElement | null>(null);
 
   const load = () => {
     if (!id) return;
@@ -227,6 +275,143 @@ export function ExpenseReviewPage() {
 
   const updateField = (field: keyof FormState, value: string | boolean) => {
     setForm((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
+
+  // The boxes are located on the first visit (a few seconds); the plain preview shows meanwhile.
+  useEffect(() => {
+    if (!id || !expense || expense.expenseType === 'MILEAGE') return;
+    let cancelled = false;
+    getFieldBoxes(id)
+      .then((result) => {
+        if (!cancelled) setFieldBoxes(result);
+      })
+      .catch(() => {
+        if (!cancelled) setFieldBoxes(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, expense?.expenseType]);
+
+  // Asked again whenever the line items change (a suggestion used).
+  useEffect(() => {
+    if (!id || !expense || expense.expenseType === 'MILEAGE') return;
+    let cancelled = false;
+    getReadingChecks(id)
+      .then((result) => {
+        if (!cancelled) setReadingChecks(result.enabled ? result : null);
+      })
+      .catch(() => {
+        if (!cancelled) setReadingChecks(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, expense?.expenseType, expense?.items]);
+
+  /** Puts a suggested price on one line item; the rest of the form (maybe edited, not saved yet) is left alone. */
+  const applyLinePrice = async (index: number, price: number) => {
+    if (!expense) return;
+    const number = (v: string | null) => (v === null ? null : Number(v));
+    const items = expense.items.map((item, i) => {
+      const line = { description: item.description, quantity: number(item.quantity), unitPrice: number(item.unitPrice), totalPrice: number(item.totalPrice), taxRate: number(item.taxRate) };
+      if (i !== index) return line;
+      // One piece: its unit price is the line's price too.
+      return { ...line, totalPrice: price, unitPrice: line.quantity === null || line.quantity === 1 ? price : line.unitPrice };
+    });
+    setFixingLine(index);
+    try {
+      const updated = await updateExpense(expense.id, { items });
+      setExpense((prev) => (prev ? { ...prev, items: updated.items } : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('review.saveDraftFailed'));
+    } finally {
+      setFixingLine(null);
+    }
+  };
+
+  /** Under a line item: what the checks say about its price, with one click to use a suggested one. */
+  const lineCheck = (index: number) => {
+    const check = readingChecks?.lines.find((l) => l.index === index);
+    if (!check || !expense) return null;
+    const money = (value: number) => formatAmount(value, expense.currency, { withCode: false });
+    const use = (price: number) =>
+      isEditable ? (
+        <button className="alert-action" type="button" disabled={fixingLine !== null} onClick={() => void applyLinePrice(index, price)}>
+          {t('review.usePrice', { amount: money(price) })}
+        </button>
+      ) : null;
+    if (check.suggested !== undefined) {
+      return (
+        <span className="line-item-check">
+          {t(check.level === 'confirmed' ? 'review.priceConfirmed' : 'review.priceMaybe', { amount: money(check.suggested) })}
+          {use(check.suggested)}
+        </span>
+      );
+    }
+    if (check.quantityTimesPrice) {
+      const q = check.quantityTimesPrice;
+      return (
+        <span className="line-item-check">
+          {t('review.quantityTimesPrice', { quantity: String(q.quantity), unit: money(q.unitPrice), expected: money(q.expected) })}
+          {use(q.expected)}
+        </span>
+      );
+    }
+    return check.compare ? <span className="line-item-check line-item-check--soft">{t('review.comparePrice')}</span> : null;
+  };
+
+  const boxLabel = (field: string) => {
+    const item = /^items\.(\d+)$/.exec(field);
+    if (item) return `${t('review.lineItems')} ${Number(item[1]) + 1}`;
+    return isPickField(field) ? t(BOX_LABELS[field]) : field;
+  };
+
+  const focusField = (field: string) => {
+    document.getElementById(`field-${field}`)?.querySelector('input')?.focus();
+  };
+
+  const selectBox = (field: string) => {
+    setActiveField(field);
+    if (isPickField(field)) focusField(field);
+  };
+
+  const startPick = (field: PickField) => {
+    setPickingField(field);
+    setPickStatus(null);
+    setActiveField(field);
+    // On a phone the document sits above the form.
+    if (!isDesktop) asideRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
+
+  const cancelPick = () => {
+    setPickingField(null);
+    setPickStatus(null);
+  };
+
+  const handlePick = async (page: number, region: Region) => {
+    if (!id || !pickingField) return;
+    const field = pickingField;
+    setPickStatus('reading');
+    try {
+      const result = await readRegion(id, { field, page, region });
+      setFieldBoxes((prev) =>
+        prev ? { ...prev, boxes: [...prev.boxes.filter((b) => !(b.source === 'USER' && b.field === field)), result.box] } : prev
+      );
+      if (result.value === null || result.value === '') {
+        // Stay in pick mode: the user can draw again.
+        setPickStatus('nothing');
+        return;
+      }
+      updateField(field, AMOUNT_FIELDS.includes(field) ? toAmountInput(String(result.value)) : String(result.value));
+      setPickingField(null);
+      setPickStatus(null);
+      focusField(field);
+    } catch {
+      setPickStatus('failed');
+    }
   };
 
   // Restores the invoice as it was actually captured, before conversion —
@@ -444,6 +629,32 @@ export function ExpenseReviewPage() {
   // saved as a draft, or kicked back with a rejection. Locked everywhere else
   // (waiting on someone else, or already decided).
   const isEditable = ['EXTRACTED', 'FAILED', 'REJECTED'].includes(expense.status) && !isMyApproval;
+
+  const showViewer = Boolean(fieldBoxes?.enabled && fieldBoxes.pages.length);
+  // A field's label, with the "pick from photo" button when the document is shown with its boxes.
+  const fieldLabel = (field: PickField, text: string) =>
+    showViewer && isEditable ? (
+      <span className="field-label-row">
+        <span>{text}</span>
+        <button
+          type="button"
+          className={`pick-button${pickingField === field ? ' pick-button--active' : ''}`}
+          title={t('review.pickFromPhoto')}
+          aria-label={`${t('review.pickFromPhoto')}: ${text}`}
+          disabled={pickStatus === 'reading'}
+          onClick={(e) => {
+            e.preventDefault();
+            if (pickingField === field) cancelPick();
+            else startPick(field);
+          }}
+        >
+          <IconPickRegion />
+        </button>
+      </span>
+    ) : (
+      <span>{text}</span>
+    );
+  const pickProps = (field: PickField) => ({ id: `field-${field}`, onFocus: () => setActiveField(field) });
 
   // Live preview from the current (possibly unsaved) form values — reflects
   // edits immediately instead of showing the stale last-saved totalAmount.
@@ -784,6 +995,37 @@ export function ExpenseReviewPage() {
         </div>
       ) : (
         <div className="detail-layout">
+          {showViewer && fieldBoxes ? (
+            <div className="detail-layout-aside detail-layout-aside--viewer" ref={asideRef}>
+              {pickingField && (
+                <div className={`pick-banner${pickStatus === 'failed' || pickStatus === 'nothing' ? ' pick-banner--error' : ''}`} role="status">
+                  <span>
+                    {pickStatus === 'reading'
+                      ? t('review.pickReading')
+                      : pickStatus === 'nothing'
+                        ? t('review.pickNothing')
+                        : pickStatus === 'failed'
+                          ? t('review.pickFailed')
+                          : t('review.pickHint', { field: boxLabel(pickingField) })}
+                  </span>
+                  <button type="button" onClick={cancelPick}>
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              )}
+              <DocumentViewer
+                expenseId={expense.id}
+                pages={fieldBoxes.pages}
+                boxes={fieldBoxes.boxes}
+                activeField={activeField}
+                picking={Boolean(pickingField) && pickStatus !== 'reading'}
+                onPick={handlePick}
+                onSelectField={selectBox}
+                labelFor={boxLabel}
+              />
+              {fieldBoxes.error && <p className="viewer-note">{t('review.boxesFailed')}</p>}
+            </div>
+          ) : (
           <div className="detail-layout-aside">
             {!fileUrl ? (
               <span className="preview-loading">{t('review.loadingPreview')}</span>
@@ -795,22 +1037,23 @@ export function ExpenseReviewPage() {
               </a>
             )}
           </div>
+          )}
 
           <div className="review-form">
             <fieldset className="review-fieldset" disabled={!isEditable}>
               <div className="form-section">
                 <h3>{t('review.vendorSection')}</h3>
                 <div className="form-grid">
-                  <label className="form-field">
-                    <span>{t('review.vendorName')}</span>
+                  <label className="form-field" {...pickProps('vendorName')}>
+                    {fieldLabel('vendorName', t('review.vendorName'))}
                     <input dir="auto" value={form.vendorName} onChange={(e) => updateField('vendorName', e.target.value)} />
                   </label>
-                  <label className="form-field">
-                    <span>{t('review.taxId')}</span>
+                  <label className="form-field" {...pickProps('vendorTaxId')}>
+                    {fieldLabel('vendorTaxId', t('review.taxId'))}
                     <input value={form.vendorTaxId} onChange={(e) => updateField('vendorTaxId', e.target.value)} />
                   </label>
-                  <label className="form-field form-field--wide">
-                    <span>{t('review.vendorAddress')}</span>
+                  <label className="form-field form-field--wide" {...pickProps('vendorAddress')}>
+                    {fieldLabel('vendorAddress', t('review.vendorAddress'))}
                     <input
                       dir="auto"
                       value={form.vendorAddress}
@@ -823,8 +1066,8 @@ export function ExpenseReviewPage() {
               <div className="form-section">
                 <h3>{t('review.invoiceSection')}</h3>
                 <div className="form-grid">
-                  <label className="form-field">
-                    <span>{t('review.invoiceNumber')}</span>
+                  <label className="form-field" {...pickProps('invoiceNumber')}>
+                    {fieldLabel('invoiceNumber', t('review.invoiceNumber'))}
                     <input
                       dir="auto"
                       value={form.invoiceNumber}
@@ -845,12 +1088,12 @@ export function ExpenseReviewPage() {
                       />
                     </label>
                   )}
-                  <label className="form-field">
-                    <span>{t('review.invoiceDate')}</span>
+                  <label className="form-field" {...pickProps('invoiceDate')}>
+                    {fieldLabel('invoiceDate', t('review.invoiceDate'))}
                     <DateInput value={form.invoiceDate} onChange={(value) => updateField('invoiceDate', value)} />
                   </label>
-                  <label className="form-field">
-                    <span>{t('review.dueDate')}</span>
+                  <label className="form-field" {...pickProps('dueDate')}>
+                    {fieldLabel('dueDate', t('review.dueDate'))}
                     <DateInput value={form.dueDate} onChange={(value) => updateField('dueDate', value)} />
                   </label>
                 </div>
@@ -859,12 +1102,12 @@ export function ExpenseReviewPage() {
               <div className="form-section">
                 <h3>{t('review.amountsSection')}</h3>
                 <div className="form-grid">
-                  <label className="form-field">
-                    <span>{t('review.subtotal')}</span>
+                  <label className="form-field" {...pickProps('subtotal')}>
+                    {fieldLabel('subtotal', t('review.subtotal'))}
                     <AmountInput value={form.subtotal} onChange={(value) => updateField('subtotal', value)} />
                   </label>
-                  <label className="form-field">
-                    <span>{t('review.discount')}</span>
+                  <label className="form-field" {...pickProps('discountAmount')}>
+                    {fieldLabel('discountAmount', t('review.discount'))}
                     <AmountInput value={form.discountAmount} onChange={(value) => updateField('discountAmount', value)} />
                   </label>
                   <label className="form-field">
@@ -876,12 +1119,12 @@ export function ExpenseReviewPage() {
                       onChange={(e) => updateField('taxRate', e.target.value)}
                     />
                   </label>
-                  <label className="form-field">
-                    <span>{t('review.taxAmount')}</span>
+                  <label className="form-field" {...pickProps('taxAmount')}>
+                    {fieldLabel('taxAmount', t('review.taxAmount'))}
                     <AmountInput value={form.taxAmount} onChange={(value) => updateField('taxAmount', value)} />
                   </label>
-                  <label className="form-field">
-                    <span>{t('review.totalAmount')}</span>
+                  <label className="form-field" {...pickProps('totalAmount')}>
+                    {fieldLabel('totalAmount', t('review.totalAmount'))}
                     <AmountInput value={form.totalAmount} onChange={(value) => updateField('totalAmount', value)} />
                   </label>
                   <label className="form-field">
@@ -939,6 +1182,7 @@ export function ExpenseReviewPage() {
               {expense.items.length > 0 && (
                 <div className="form-section">
                   <h3>{t('review.lineItems')}</h3>
+                  {readingChecks?.smallImage && readingChecks.lines.length > 0 && <p className="viewer-note">{t('review.smallPhoto')}</p>}
                   {/* A table doesn't fit a phone: there each item is a row of its own (description, qty × price, total). */}
                   {isDesktop ? (
                     <div className="invoice-table-wrap">
@@ -952,9 +1196,12 @@ export function ExpenseReviewPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {expense.items.map((item) => (
-                            <tr key={item.id}>
-                              <td dir="auto">{item.description}</td>
+                          {expense.items.map((item, index) => (
+                            <tr key={item.id} onMouseEnter={() => setActiveField(`items.${index}`)}>
+                              <td dir="auto">
+                                {item.description}
+                                {lineCheck(index)}
+                              </td>
                               <td className="align-right">{formatQuantity(item.quantity)}</td>
                               <td className="align-right">{formatAmount(item.unitPrice, expense.currency, { withCode: false })}</td>
                               <td className="align-right">{formatAmount(item.totalPrice, expense.currency, { withCode: false })}</td>
@@ -965,8 +1212,8 @@ export function ExpenseReviewPage() {
                     </div>
                   ) : (
                     <ul className="line-item-list">
-                      {expense.items.map((item) => (
-                        <li key={item.id} className="line-item">
+                      {expense.items.map((item, index) => (
+                        <li key={item.id} className="line-item" onClick={() => setActiveField(`items.${index}`)}>
                           <span className="line-item-main">
                             <span className="line-item-description" dir="auto">
                               {item.description}
@@ -974,6 +1221,7 @@ export function ExpenseReviewPage() {
                             <span className="line-item-sub">
                               {formatQuantity(item.quantity)} × {formatAmount(item.unitPrice, expense.currency, { withCode: false })}
                             </span>
+                            {lineCheck(index)}
                           </span>
                           <span className="line-item-total">{formatAmount(item.totalPrice, expense.currency, { withCode: false })}</span>
                         </li>

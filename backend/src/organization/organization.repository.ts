@@ -2,7 +2,7 @@ import { AppModule } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { UpdateOrganizationSettingsInput } from './organization.schema';
 
-const SETTINGS_SELECT = { mileageRatePerKm: true, defaultCurrency: true, defaultLanguage: true, country: true, modules: true, accountingConnector: true, currencyConverter: true, materialMatcher: true };
+const SETTINGS_SELECT = { mileageRatePerKm: true, defaultCurrency: true, defaultLanguage: true, country: true, modules: true, accountingConnector: true, currencyConverter: true, materialMatcher: true, invoiceReader: true };
 
 export type OrganizationSettings = {
   mileageRatePerKm: number;
@@ -13,6 +13,7 @@ export type OrganizationSettings = {
   accountingConnector: string;
   currencyConverter: string;
   materialMatcher: string;
+  invoiceReader: string;
 };
 
 function toSettings(org: Omit<OrganizationSettings, 'mileageRatePerKm'> & { mileageRatePerKm: unknown }): OrganizationSettings {
@@ -24,7 +25,8 @@ function toSettings(org: Omit<OrganizationSettings, 'mileageRatePerKm'> & { mile
     modules: org.modules,
     accountingConnector: org.accountingConnector,
     currencyConverter: org.currencyConverter,
-    materialMatcher: org.materialMatcher
+    materialMatcher: org.materialMatcher,
+    invoiceReader: org.invoiceReader
   };
 }
 
@@ -48,7 +50,8 @@ export const organizationRepository = {
         ...(input.modules !== undefined ? { modules: input.modules } : {}),
         ...(input.accountingConnector !== undefined ? { accountingConnector: input.accountingConnector } : {}),
         ...(input.currencyConverter !== undefined ? { currencyConverter: input.currencyConverter } : {}),
-        ...(input.materialMatcher !== undefined ? { materialMatcher: input.materialMatcher } : {})
+        ...(input.materialMatcher !== undefined ? { materialMatcher: input.materialMatcher } : {}),
+        ...(input.invoiceReader !== undefined ? { invoiceReader: input.invoiceReader } : {})
       },
       select: SETTINGS_SELECT
     });

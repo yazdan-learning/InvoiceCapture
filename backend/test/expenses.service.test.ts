@@ -44,6 +44,7 @@ function setup({
   const fileStorage = { save: vi.fn(async () => 'path'), read: vi.fn(), delete: vi.fn() };
   const repository = {
     getOrganizationCountry: vi.fn(async () => country),
+    getOrganizationReader: vi.fn(async () => 'CLASSIC'),
     getOrganizationDefaultCurrency: vi.fn(async () => defaultCurrency),
     getOrganizationModules: vi.fn(async () => modules),
     getOrganizationAccountingConnector: vi.fn(async () => 'NONE'),

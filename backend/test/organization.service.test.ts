@@ -4,7 +4,7 @@ import { OrganizationRepository, OrganizationSettings } from '../src/organizatio
 import { BadRequestError } from '../src/shared/errors';
 
 function fakeRepository(settings: Partial<OrganizationSettings> = {}) {
-  const current: OrganizationSettings = { mileageRatePerKm: 0.3, defaultCurrency: 'EUR', defaultLanguage: 'en', country: 'INTL', modules: ['EXPENSES'], accountingConnector: 'NONE', currencyConverter: 'FRANKFURTER', materialMatcher: 'LLM', ...settings };
+  const current: OrganizationSettings = { mileageRatePerKm: 0.3, defaultCurrency: 'EUR', defaultLanguage: 'en', country: 'INTL', modules: ['EXPENSES'], accountingConnector: 'NONE', currencyConverter: 'FRANKFURTER', materialMatcher: 'LLM', invoiceReader: 'CLASSIC', ...settings };
   return {
     get: vi.fn(async () => current),
     updateSettings: vi.fn(async (_id: string, input: Partial<OrganizationSettings>) => ({ ...current, ...input }))

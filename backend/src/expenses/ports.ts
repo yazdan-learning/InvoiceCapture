@@ -56,6 +56,13 @@ export type ExtractOptions = {
   handwritten?: boolean;
   /** The organization's country: its prompt rules, calendar and currency units. International when not given. */
   country?: CountryProfile;
+  /**
+   * OCR text already made of this file (the template-guided reader OCRs first to pick the rules):
+   * used instead of a second OCR call. The classic reader never gets one.
+   */
+  ocrText?: string;
+  /** Organization.invoiceReader, for the extractor that picks CLASSIC or TEMPLATE. */
+  reader?: string;
 };
 
 export interface InvoiceExtractor {

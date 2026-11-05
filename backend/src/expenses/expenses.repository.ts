@@ -45,6 +45,7 @@ export type CreateExpenseInput = {
   isDuplicate: boolean;
   duplicateOfId?: string | null;
   rawExtraction?: Prisma.InputJsonValue;
+  initialReading?: Prisma.InputJsonValue;
   errorMessage?: string | null;
   categoryId?: string | null;
   mileageDate?: Date | null;
@@ -209,6 +210,12 @@ export const expensesRepository = {
       select: { defaultCurrency: true }
     });
     return org.defaultCurrency;
+  },
+
+  /** Organization.invoiceReader: CLASSIC or TEMPLATE (see reading/registry.ts). */
+  async getOrganizationReader(organizationId: string): Promise<string> {
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { invoiceReader: true } });
+    return org.invoiceReader;
   },
 
   async getOrganizationCountry(organizationId: string): Promise<string> {

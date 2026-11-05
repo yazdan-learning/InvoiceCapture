@@ -27,6 +27,8 @@ export function AdminSettingsPage() {
   const [currencyConverters, setCurrencyConverters] = useState<{ id: string; name: string }[]>([]);
   const [materialMatcher, setMaterialMatcher] = useState('LLM');
   const [materialMatchers, setMaterialMatchers] = useState<{ id: string; name: string }[]>([]);
+  const [invoiceReader, setInvoiceReader] = useState('CLASSIC');
+  const [invoiceReaders, setInvoiceReaders] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -46,6 +48,8 @@ export function AdminSettingsPage() {
         setCurrencyConverters(settings.supportedCurrencyConverters);
         setMaterialMatcher(settings.materialMatcher);
         setMaterialMatchers(settings.supportedMaterialMatchers);
+        setInvoiceReader(settings.invoiceReader);
+        setInvoiceReaders(settings.supportedInvoiceReaders);
       })
       .catch((err) => setError(err instanceof Error ? err.message : t('adminSettings.loadFailed')))
       .finally(() => setLoading(false));
@@ -95,7 +99,9 @@ export function AdminSettingsPage() {
         currencyConverter,
         // Only purchase invoices are sent to accounting; only pricing matches materials.
         ...(invoicesEnabled ? { accountingConnector } : {}),
-        ...(pricingEnabled ? { materialMatcher } : {})
+        ...(pricingEnabled ? { materialMatcher } : {}),
+        // Receipts and purchase invoices are read the same way.
+        ...(expensesEnabled || invoicesEnabled ? { invoiceReader } : {})
       });
       setMileageRatePerKm(String(updated.mileageRatePerKm));
       setDefaultCurrency(updated.defaultCurrency);
@@ -105,6 +111,7 @@ export function AdminSettingsPage() {
       setAccountingConnector(updated.accountingConnector);
       setCurrencyConverter(updated.currencyConverter);
       setMaterialMatcher(updated.materialMatcher);
+      setInvoiceReader(updated.invoiceReader);
       reloadCountry();
       reloadModules();
       setSuccessMessage(t('adminSettings.saved'));
@@ -171,6 +178,26 @@ export function AdminSettingsPage() {
                   </label>
                 </div>
                 <p className="field-hint">{t('adminSettings.accountingHint')}</p>
+              </div>
+            )}
+
+            {(expensesEnabled || invoicesEnabled) && (
+              <div className="form-section">
+                <h3>{t('adminSettings.invoiceReadingSection')}</h3>
+                <div className="form-grid">
+                  <label className="form-field">
+                    <span>{t('adminSettings.invoiceReader')}</span>
+                    <Select
+                      value={invoiceReader}
+                      onChange={setInvoiceReader}
+                      options={invoiceReaders.map((r) => ({
+                        value: r.id,
+                        label: r.id === 'CLASSIC' ? t('adminSettings.invoiceReaderClassic') : t('adminSettings.invoiceReaderTemplate')
+                      }))}
+                    />
+                  </label>
+                </div>
+                <p className="field-hint">{t('adminSettings.invoiceReaderHint')}</p>
               </div>
             )}
 

@@ -27,7 +27,17 @@ An organization can use any combination of the modules.
 
 - Upload by drag & drop, file picker or phone camera (JPEG, PNG, WebP, PDF).
 - Extraction in the backend: Mistral OCR + an LLM; handwritten invoices go to a separate
-  vision model.
+  vision model. Two readers, chosen per organization (Settings):
+  - `CLASSIC`: the stable reader, kept as it is.
+  - `TEMPLATE`: the one being developed, for every kind of file (printed, handwritten,
+    several invoices in one file). On top of the classic reading: small photos and
+    screenshots enlarged before OCR, VAT codes not taken for quantities (dm), foreign receipts
+    in an Iranian organization read with the international rules, a clear warning when the
+    lines are far off the total, and per-line hints on the review page (quantity × price, the
+    likely misread digit). Field boxes and pick-from-photo; template matching next. It
+    replaces `CLASSIC` once it is stable.
+- The OCR/LLM gateway and the checks on a reading come from the shared private package
+  `@yazdan-learning/ai` (repo `yazdan-learning/ai-packages`, also used by Nestmate).
 - **Country profiles** (per organization): `INTL` (default) and `IR` (Iran — Shamsi
   calendar and date picker, Rial/Toman, Persian prompts, "handwritten" option on upload).
 - Multi-currency: receipts are converted into the organization's currency at the invoice

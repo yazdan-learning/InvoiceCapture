@@ -139,3 +139,13 @@ export function IconCamera({ className }: IconProps) {
     </svg>
   );
 }
+
+/** "Pick from photo": a selection frame with a pointer. */
+export function IconPickRegion({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 9V5a1 1 0 011-1h4M15 4h4a1 1 0 011 1v4M4 15v4a1 1 0 001 1h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M13 13l7 2.5-3 1.5-1.5 3L13 13z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  );
+}
