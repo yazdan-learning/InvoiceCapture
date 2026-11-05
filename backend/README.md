@@ -329,7 +329,10 @@ back is that setting only. So far `TEMPLATE` reads with the same extractor and a
   package shared with Nestmate): a photo under 600 px on its short side is enlarged 2× (for the
   OCR and the re-read; the stored file stays the original), then the file is OCR'd first; a receipt without Persian text in an
   Iranian organization is read with the international rules. VAT codes read as quantities
-  (dm's "2,95 2") are taken out when the total and every VAT group then add up. With
+  (dm's "2,95 2") are taken out when the total and every VAT group then add up.
+  The tax and net amounts come from the VAT table when every row adds up and the gross amounts
+  equal the total (the model's own tax may only add up); a table that disagrees with the reading
+  gets `TAX_UNCHECKED`. With
   `LLM_MODEL_LARGE` set, an invoice that still doesn't add up gets one last look with that
   model. One that is far off its total gets `AMOUNTS_FAR_OFF` instead of `AMOUNTS_UNCHECKED`.
   Handwritten invoices are read as in `CLASSIC` (vision model plus OCR alongside), with a small
