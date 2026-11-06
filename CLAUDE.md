@@ -54,7 +54,7 @@ rows; to inspect data, run a small `tsx` script with the Prisma client.
 - **Invoice readers** (`Organization.invoiceReader`): `CLASSIC` (the stable extractor, tag
   `extractor-classic-v1`, on the shared package's gateway and checks) and `TEMPLATE`
   (template-guided, `backend/src/reading/`, for every kind of file: printed, handwritten, several
-  invoices in one file; small-photo enlarging, VAT-code fix, tax and net from the VAT table, foreign receipts, line checks, field
+  invoices in one file; small-photo enlarging, VAT-code fix, tax and net from the VAT table, foreign receipts, total/payment lines in the common European languages, line checks, field
   boxes, pick from photo; template matching next). Keep `CLASSIC`'s behaviour unchanged: new
   reading behaviour goes behind `TEMPLATE`, which replaces `CLASSIC` once it is stable.
 - **Amounts** in the UI go through `src/lib/money.ts` and `AmountInput` (thousands separators).

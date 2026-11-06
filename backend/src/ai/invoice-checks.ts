@@ -21,10 +21,15 @@ import { ExtractedInvoiceData } from '../expenses/ports';
 export type InvoiceProblem = ReadingProblem;
 export type InvoiceCheck = ReadingCheck;
 
-// The shared footer words ("Summe", "Total", "Gesamt", payment and change
-// lines) plus the Persian جمع کل, تخفیف, مالیات, قابل پرداخت: never something bought.
-export const SUMMARY_LINE = new RegExp(
-  `${SHARED_SUMMARY_LINE.source}|^\\s*(جمع|تخفیف|مالیات|عوارض|ارزش افزوده|مبلغ (قابل )?پرداخت|مبلغ کل به ?حروف)`,
+const PERSIAN_SUMMARY = '^\\s*(جمع|تخفیف|مالیات|عوارض|ارزش افزوده|مبلغ (قابل )?پرداخت|مبلغ کل به ?حروف)';
+
+// TEMPLATE: the shared footer words (totals, payment, change and VAT lines in
+// the common European languages) plus the Persian جمع کل, تخفیف, مالیات, قابل پرداخت: never something bought.
+export const SUMMARY_LINE = new RegExp(`${SHARED_SUMMARY_LINE.source}|${PERSIAN_SUMMARY}`, 'i');
+
+// CLASSIC keeps the German and English words it was built with (its behaviour stays as it is).
+const CLASSIC_SUMMARY_LINE = new RegExp(
+  `^\\s*(zwischen)?summe\\b|^\\s*(sub)?total\\b|^\\s*gesamt(betrag|summe)?\\b|^\\s*(karten|bar)zahlung\\b|^\\s*(r[uü]ck|wechsel)geld\\b|^\\s*gegeben\\b|^\\s*(mwst|ust)\\b|${PERSIAN_SUMMARY}`,
   'i'
 );
 
@@ -43,5 +48,5 @@ export function withoutTaxLine(data: ExtractedInvoiceData): ExtractedInvoiceData
 }
 
 export function checkInvoice(data: ExtractedInvoiceData): InvoiceCheck {
-  return checkReading(data, { summaryLine: SUMMARY_LINE, totalMatches: linesWithDiscountOrTax });
+  return checkReading(data, { summaryLine: CLASSIC_SUMMARY_LINE, totalMatches: linesWithDiscountOrTax });
 }
