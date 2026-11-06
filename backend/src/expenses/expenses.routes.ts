@@ -1,3 +1,4 @@
+import { TallImageOcr } from '@yazdan-learning/ai';
 import { Router } from 'express';
 import multer from 'multer';
 import { env } from '../config/env';
@@ -62,7 +63,8 @@ function directExtractor(): InvoiceExtractor {
   const large = env.llm.largeModel
     ? new OpenAiCompatibleLlm({ ...env.llm, models: { fast: env.llm.largeModel, smart: env.llm.largeModel }, timeoutMs: env.aiTimeoutMs })
     : null;
-  return new ReaderSwitchExtractor(classic, new TemplateInvoiceExtractor(classic, ocr, large));
+  // TEMPLATE reads a shop app's long receipt in pieces (OCR shrinks a page that tall); CLASSIC reads it whole as before.
+  return new ReaderSwitchExtractor(classic, new TemplateInvoiceExtractor(classic, new TallImageOcr(ocr), large));
 }
 
 const extractor: InvoiceExtractor =
