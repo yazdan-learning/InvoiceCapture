@@ -49,5 +49,7 @@ export type CountryProfile = {
   calendar: CalendarId;
   /** UI text direction. */
   direction: 'ltr' | 'rtl';
+  /** Tesseract languages for the word positions of field boxes ('+'-joined); fewer read faster and mix up fewer digits. */
+  ocrLanguages: string;
   invoice: InvoiceRules;
 };

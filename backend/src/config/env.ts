@@ -41,6 +41,16 @@ export const env = {
     reasoningEffort: process.env.VISION_REASONING_EFFORT || 'none',
     timeoutMs: Number(process.env.VISION_TIMEOUT_MS ?? 45_000)
   },
+  // Our own OCR service with word positions (ai-packages/services/ocr-tesseract):
+  // the template-guided reader's field boxes come from it first, the vision model
+  // only looks for what it didn't place. Empty URL = the vision model does it all.
+  tesseract: {
+    url: process.env.TESSERACT_URL || '',
+    token: process.env.OCR_SERVICE_TOKEN || '',
+    // The organization's country profile picks the languages (ocrLanguages); this is only the service default.
+    languages: 'eng',
+    timeoutMs: Number(process.env.TESSERACT_TIMEOUT_MS ?? 60_000)
+  },
   ocr: {
     baseUrl: process.env.MISTRAL_BASE_URL || 'https://api.mistral.ai/v1',
     apiKey: process.env.MISTRAL_API_KEY || '',

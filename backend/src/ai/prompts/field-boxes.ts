@@ -40,27 +40,37 @@ export const READ_REGION = {
 const KIND_RULES: Record<FieldKind, string> = {
   text: 'Copy the text as written: keep Persian or other text as it is, and write any digits as Western digits (0-9).',
   amount: `Return the amount as a plain number with Western digits (0-9) and no separators: ",", "٬", "." or "/"
-between groups of three digits are thousands separators (۱.۲۵۰.۰۰۰ = 1250000). Digits may be written one per box:
+between groups of three digits are thousands separators (۱.۲۵۰.۰۰۰ = 1250000); a "," or "." before only two digits
+at the end is the decimal mark (14,97 = 14.97). Digits may be written one per box:
 read every box, including each 0. A dash after digits ("۴۵—") stands for trailing zeros.`,
   date: `Return the date as printed: "YYYY/MM/DD" with the Shamsi year for a Shamsi date (۱۴۰۳/۱۱/۰۸ = "1403/11/08"),
 or "YYYY-MM-DD" for a Gregorian date. Never convert between calendars.`
 };
 
 /**
- * The first image is the whole page with the user's region framed in red, the
- * second that region enlarged: a crop alone loses what helps read handwriting
- * (the total in words, the column sums, the other dates). `handwriting` is the
- * country's handwriting rules for a handwritten invoice; `today` is in the
- * country's calendar.
+ * Printed invoices: only the region the user drew, enlarged (a printed value
+ * reads on its own, at about half the cost). Handwritten (`withPage`): first the
+ * whole page with the region framed in red, then the region enlarged, since a
+ * crop alone loses what helps read handwriting (the total in words, the column
+ * sums, the other dates). `handwriting` is the country's handwriting rules;
+ * `today` is in the country's calendar.
  */
-export function readRegionPrompt(kind: FieldKind, label: string, today: string, handwriting?: string): string {
-  return `The first attached image is a page of an invoice${handwriting ? ' filled in by hand' : ''} on which the user framed a region in red; the
-second image is that region enlarged. Read ${label} written inside the red frame. ${KIND_RULES[kind]}
-Use the rest of the page only to read the framed value better, never take a value from outside the frame: for an
-amount, the line totals and the total in words show which digits are right; for a date, today is ${today} and an
-invoice is almost always from the last few months, so a year far from today's is most likely a misread digit.${
-    handwriting ? `\nHandwriting:\n${handwriting}` : ''
-  }
-If the frame holds no such value, value is null.
+export function readRegionPrompt(kind: FieldKind, label: string, today: string, options: { withPage: boolean; handwriting?: string }): string {
+  const { withPage, handwriting } = options;
+  const images = withPage
+    ? `The first attached image is a page of an invoice${handwriting ? ' filled in by hand' : ''} on which the user framed a region in red; the
+second image is that region enlarged. The user put the frame on ${label}: read what is written inside the red frame.`
+    : `The attached image is a region the user cut out of an invoice page, enlarged. The user put it on ${label}: read what
+is written in it.`;
+  const context = withPage
+    ? `Use the rest of the page only to read the framed characters better, never take a value from outside the frame: for
+an amount, the line totals and the total in words show which digits are right; for a date, today is ${today} and an
+invoice is almost always from the last few months, so a year far from today's is most likely a misread digit.`
+    : `Text cut off at the edge of the image belongs to its neighbours: leave it out. For a date, today is ${today} and an
+invoice is almost always from the last few months, so a year far from today's is most likely a misread digit.`;
+  return `${images}
+${KIND_RULES[kind]}
+The user decided what it holds: do not judge whether it is really ${label}, just read it. ${context}${handwriting ? `\nHandwriting:\n${handwriting}` : ''}
+value is null only when nothing is written ${withPage ? 'inside the frame' : 'in it'}${kind === 'text' ? '' : ` or it holds no ${kind}`}.
 Emit ONLY compact JSON (no markdown fences): {"value": string|null}`;
 }

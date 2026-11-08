@@ -68,6 +68,10 @@ cp .env.example .env     # VITE_API_BASE_URL=http://localhost:4300
 npm run dev              # http://localhost:5173
 ```
 
+On a phone on the same network: `VITE_API_BASE_URL= npm run dev -- --host`, then open the
+"Network" address it prints. The empty `VITE_API_BASE_URL` sends `/api` through the dev
+server to the backend (proxy in `vite.config.ts`), so the phone doesn't need to reach port 4300.
+
 ### Frontend environment
 
 | Variable | Purpose |

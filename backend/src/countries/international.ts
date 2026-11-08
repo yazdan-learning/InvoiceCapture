@@ -8,6 +8,8 @@ export const international: CountryProfile = {
   extraCurrencies: [],
   calendar: 'gregorian',
   direction: 'ltr',
+  // Europe and Turkey: Latin script with German and Turkish letters.
+  ocrLanguages: 'eng+deu+tur',
   invoice: {
     dateFormat: '"YYYY-MM-DD"|null',
     promptRules: '',
