@@ -75,6 +75,8 @@ const expensesService = createExpensesService({
   extractor,
   fileStorage,
   approverResolver: authService,
+  // The reading service is built below (it needs this one); this runs only after an invoice is sent.
+  afterConfirmed: (organizationId, id, actor) => readingService.learnTemplate(organizationId, id, actor),
   distanceCalculator: env.googleDirectionsApiKey
     ? new GoogleDirectionsCalculator(env.googleDirectionsApiKey)
     : new UnconfiguredDistanceCalculator()

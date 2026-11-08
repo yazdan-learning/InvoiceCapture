@@ -3470,7 +3470,8 @@ h1 {
 
 @media (min-width: 901px) {
   .review-workspace {
-    grid-template-columns: minmax(440px, 1fr) minmax(0, 1.1fr);
+    /* Form 60%, document 40%. */
+    grid-template-columns: minmax(440px, 3fr) minmax(0, 2fr);
   }
 
   .review-workspace-form {
@@ -3557,4 +3558,170 @@ h1 {
   .form-field .rmdp-input {
     font-size: 16px;
   }
+}
+
+.viewer-note--template {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.doc-action--primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: white;
+}
+
+.doc-action--primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+/* Read with AI found something else in the box: under the field, until the user decides. */
+.field-doubt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.field-doubt-action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1d4ed8;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.field-doubt-action--quiet {
+  color: #64748b;
+}
+
+/* With the document: the page starts higher (less padding, one header line). */
+.app-content:has(.review-workspace) {
+  padding-top: 14px;
+}
+
+.review-page:has(.review-workspace) {
+  gap: 12px;
+}
+
+.review-header--compact {
+  gap: 16px;
+  justify-content: flex-start;
+}
+
+.review-header--compact .review-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.review-header--compact .review-title h1 {
+  font-size: 19px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 901px) {
+  .review-workspace-doc {
+    top: 12px;
+    /* The screen below the top bar, the smaller padding and the one-line header. */
+    height: calc(100vh - 150px);
+  }
+
+  .review-workspace-form {
+    padding-top: 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .review-header--compact {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+  }
+
+  .review-header--compact .review-title {
+    order: 3;
+    flex-basis: 100%;
+  }
+}
+
+.review-title-warning {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 46ch;
+  padding: 3px 10px;
+  border: 1px solid #fcd34d;
+  border-radius: 999px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.review-header--compact .review-title {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 4px 14px;
+}
+
+@media (min-width: 901px) {
+  .app-content:has(.review-workspace) {
+    padding-top: 10px;
+  }
+
+  .review-page:has(.review-workspace) {
+    gap: 10px;
+  }
+
+  .review-workspace-doc {
+    top: 8px;
+    height: calc(100vh - 128px);
+  }
+}
+
+@media (max-width: 900px) {
+  .review-header--compact .review-title {
+    flex-wrap: wrap;
+  }
+
+  .review-title-warning {
+    max-width: 100%;
+    white-space: normal;
+  }
+}
+
+/* Laptop: form and document side by side at the same height; the form scrolls inside its own panel. */
+@media (min-width: 901px) {
+  .review-workspace {
+    align-items: stretch;
+  }
+
+  .review-workspace-form {
+    height: calc(100vh - 128px);
+    min-height: 420px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+.review-title-warning--info {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1e40af;
 }

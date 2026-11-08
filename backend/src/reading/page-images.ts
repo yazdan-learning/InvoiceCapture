@@ -135,6 +135,34 @@ export async function cropForOcr(page: PageImage, region: Region): Promise<{ buf
   return { buffer, frame: { x: left / page.width, y: top / page.height, width: width / page.width, height: height / page.height } };
 }
 
+/**
+ * The region framed in red with some of the page around it, enlarged: enough
+ * to read the framed value and see its label ("نام مشتری:" next to a name),
+ * at a fraction of the whole page's size.
+ */
+export async function regionInContext(page: PageImage, region: Region): Promise<Buffer> {
+  const marginX = Math.max(region.width, 0.15);
+  const marginY = Math.max(region.height * 2, 0.04);
+  const left = Math.max(0, Math.floor((region.x - marginX) * page.width));
+  const top = Math.max(0, Math.floor((region.y - marginY) * page.height));
+  const right = Math.min(page.width, Math.ceil((region.x + region.width + marginX) * page.width));
+  const bottom = Math.min(page.height, Math.ceil((region.y + region.height + marginY) * page.height));
+  const width = Math.max(1, right - left);
+  const height = Math.max(1, bottom - top);
+  const stroke = Math.max(2, Math.round(Math.min(width, height) / 150));
+  const frame = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect x="${region.x * page.width - left}" y="${
+      region.y * page.height - top
+    }" width="${region.width * page.width}" height="${region.height * page.height}" fill="none" stroke="#ff0000" stroke-width="${stroke}"/></svg>`
+  );
+  const scale = Math.max(1, Math.min(MIN_CROP_SIDE / Math.min(width, height), MAX_CROP_SIDE / Math.max(width, height)));
+  const framed = await sharp(page.buffer).extract({ left, top, width, height }).composite([{ input: frame }]).toBuffer();
+  return sharp(framed)
+    .resize({ width: Math.round(width * scale), height: Math.round(height * scale) })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+}
+
 /** The page with the region framed in red: the vision model reads it in the context of the whole page. */
 export async function markRegion(page: PageImage, region: Region): Promise<Buffer> {
   const stroke = Math.max(3, Math.round(Math.min(page.width, page.height) / 300));

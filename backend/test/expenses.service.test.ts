@@ -26,7 +26,8 @@ function setup({
   defaultCurrency = 'EUR',
   modules = ['EXPENSES'] as AppModule[],
   stored = null as Record<string, unknown> | null,
-  connector = { send: vi.fn(async () => ({ reference: 'ACC-7' })) } as AccountingConnector & { send: ReturnType<typeof vi.fn> }
+  connector = { send: vi.fn(async () => ({ reference: 'ACC-7' })) } as AccountingConnector & { send: ReturnType<typeof vi.fn> },
+  afterConfirmed = undefined as ((organizationId: string, id: string, actor: Actor) => Promise<{ vendorName: string | null; created: boolean } | null>) | undefined
 } = {}) {
   const extractor = {
     extract: vi.fn(async (_file: unknown, _options?: ExtractOptions) => ({
@@ -64,7 +65,8 @@ function setup({
     approverResolver: { getApprover: vi.fn() },
     distanceCalculator: { getDistance: vi.fn() },
     accountingConnectorFor: () => connector,
-    currencyConverterFor: () => currencyConverter
+    currencyConverterFor: () => currencyConverter,
+    afterConfirmed
   });
   return { service, extractor, currencyConverter, repository, connector, fileStorage };
 }
@@ -177,6 +179,24 @@ describe('sendToAccounting', () => {
     await expect(service.sendToAccounting('org', 'inv1', accountant)).rejects.toThrow('API down');
     expect(repository.update).toHaveBeenCalledWith('inv1', { accountingError: 'API down' });
     expect(repository.update).not.toHaveBeenCalledWith('inv1', expect.objectContaining({ status: 'SENT' }));
+  });
+
+  it("learns the vendor's template after sending, and says so", async () => {
+    const afterConfirmed = vi.fn(async () => ({ vendorName: 'Kaveh Co.', created: true }));
+    const { service } = setup({ modules: ['PURCHASE_INVOICES'], stored: storedInvoice(), afterConfirmed });
+    const sent = await service.sendToAccounting('org', 'inv1', accountant);
+    expect(afterConfirmed).toHaveBeenCalledWith('org', 'inv1', accountant);
+    expect(sent).toMatchObject({ status: 'SENT', templateLearned: { vendorName: 'Kaveh Co.', created: true } });
+  });
+
+  it('never fails a send because learning the template failed, and learns nothing from a failed send', async () => {
+    const afterConfirmed = vi.fn(async () => Promise.reject(new Error('db down')));
+    const { service } = setup({ modules: ['PURCHASE_INVOICES'], stored: storedInvoice(), afterConfirmed });
+    expect(await service.sendToAccounting('org', 'inv1', accountant)).toMatchObject({ status: 'SENT', templateLearned: null });
+    const failing = setup({ modules: ['PURCHASE_INVOICES'], stored: storedInvoice(), afterConfirmed, connector: { send: vi.fn(async () => Promise.reject(new Error('API down'))) } });
+    afterConfirmed.mockClear();
+    await expect(failing.service.sendToAccounting('org', 'inv1', accountant)).rejects.toThrow('API down');
+    expect(afterConfirmed).not.toHaveBeenCalled();
   });
 
   it('sends an invoice only once', async () => {

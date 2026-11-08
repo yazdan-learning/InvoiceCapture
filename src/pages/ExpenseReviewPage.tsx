@@ -25,6 +25,7 @@ import { Category, Expense } from '../types';
 import { BoxTone, DocumentViewer } from '../components/DocumentViewer';
 import { IconPickRegion } from '../components/icons';
 import { StatusPill } from '../components/StatusPill';
+import { TemplateNote } from '../components/TemplateNote';
 import { LocationAutocompleteInput } from '../components/LocationAutocompleteInput';
 import { RouteMap } from '../components/RouteMap';
 import { Select } from '../components/Select';
@@ -192,7 +193,43 @@ function boxOf(boxes: FieldBox[], field: string): FieldBox | undefined {
 type Issue = { field: string; text: string };
 
 /** After reading a box: the value filled in (with the one it replaced, for undo), or why there was none. */
-type BoxNote = { field: string; kind: 'filled'; previous: string | null } | { field: string; kind: BoxReadReason | 'aiEmpty' };
+type BoxNote =
+  | { field: string; kind: 'filled'; previous: string | null }
+  | { field: string; kind: BoxReadReason | 'aiEmpty' }
+  /** Read with AI found something else in the box (a customer's name framed as the vendor address): fill only if the user says so. */
+  | { field: string; kind: 'doubt'; looksLike: string; value: string | number };
+
+/** What a box can turn out to hold ("Read with AI"), as shown to the user. */
+const LOOKS_LIKE_LABELS: Record<string, string> = {
+  vendorName: 'review.vendorName',
+  vendorAddress: 'review.vendorAddress',
+  vendorTaxId: 'review.taxId',
+  customerName: 'review.looksLikeCustomerName',
+  customerAddress: 'review.looksLikeCustomerAddress',
+  invoiceNumber: 'review.invoiceNumber',
+  date: 'review.looksLikeDate',
+  amount: 'review.looksLikeAmount',
+  phone: 'review.looksLikePhone',
+  other: 'review.looksLikeOther'
+};
+
+/** Text compared loosely: Persian ي/ك, joiners, spacing, case and punctuation don't count; one may hold the other. */
+const looseText = (s: string) =>
+  s
+    .normalize('NFKC')
+    .replace(/ي/g, 'ی')
+    .replace(/ك/g, 'ک')
+    .replace(/[\u200c\u200d]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+
+/** Whether the value in a template's box and the field's value say the same thing. */
+function sameValue(field: string, boxValue: string | number, formValue: string): boolean {
+  if (AMOUNT_FIELDS.includes(field as PickField)) return Math.abs(Number(boxValue) - Number(formValue)) < 0.005;
+  if (field === 'invoiceDate' || field === 'dueDate') return String(boxValue) === formValue;
+  const [a, b] = [looseText(String(boxValue)), looseText(formValue)];
+  return a === b || (a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a)));
+}
 
 /** A field's state on the document, for its chip in the form. */
 type FieldStatus = 'user' | 'model' | 'missing' | null;
@@ -245,6 +282,8 @@ export function ExpenseReviewPage() {
   const [drawing, setDrawing] = useState<{ field: string } | null>(null);
   const [pickStatus, setPickStatus] = useState<'reading' | 'failed' | null>(null);
   const [boxNote, setBoxNote] = useState<BoxNote | null>(null);
+  /** Template disagreements the user set aside for this invoice ("Ignore"). */
+  const [ignoredTemplateFields, setIgnoredTemplateFields] = useState<Set<string>>(new Set());
   const [boxError, setBoxError] = useState(false);
   /** "Review now": the issue shown, or null before starting. */
   const [issueIndex, setIssueIndex] = useState<number | null>(null);
@@ -509,6 +548,11 @@ export function ExpenseReviewPage() {
         setBoxNote({ field, kind: ai ? 'aiEmpty' : ((result as { reason?: BoxReadReason }).reason ?? 'empty') });
         return false;
       }
+      const looksLike = (result as { looksLike?: string }).looksLike;
+      if (looksLike) {
+        setBoxNote({ field, kind: 'doubt', looksLike, value: result.value });
+        return false;
+      }
       fillField(field, result.value);
       return true;
     } catch {
@@ -696,8 +740,8 @@ export function ExpenseReviewPage() {
     setError(null);
     try {
       await updateExpense(id, payload);
-      await submitExpense(id);
-      navigate('/expenses');
+      const submitted = await submitExpense(id);
+      navigate('/expenses', { state: { templateLearned: submitted.templateLearned } });
     } catch (err) {
       setError(err instanceof Error ? err.message : t('review.submitFailed'));
     } finally {
@@ -716,8 +760,9 @@ export function ExpenseReviewPage() {
     setError(null);
     try {
       await updateExpense(id, payload);
-      await sendInvoiceToAccounting(id);
-      navigate(nextInvoiceId ? `/invoices/${nextInvoiceId}` : '/invoices');
+      const sent = await sendInvoiceToAccounting(id);
+      // The next invoice (or the list) says what this one taught its vendor's template.
+      navigate(nextInvoiceId ? `/invoices/${nextInvoiceId}` : '/invoices', { state: { templateLearned: sent.templateLearned } });
     } catch (err) {
       setError(err instanceof Error ? err.message : t('invoices.sendFailed'));
       // The failure is stored on the invoice: reload to show it.
@@ -795,7 +840,18 @@ export function ExpenseReviewPage() {
   const handwrittenIssueFields = (handwrittenFields(expense.errorMessage) ?? []).flatMap((f) =>
     f === 'items' ? expense.items.map((_, i) => `items.${i}`).slice(0, 1) : isPickField(f) ? [f] : []
   );
+  // The vendor's template and the reading disagree: its box holds a value the field doesn't have (or the field is empty).
+  const templateIssues = (fieldBoxes?.templateValues ?? []).flatMap(({ field, value, text }): (Issue & { use?: string | number })[] => {
+    if (!isPickField(field) || ignoredTemplateFields.has(field) || !boxOf(boxes, field) || boxOf(boxes, field)?.source !== 'TEMPLATE') return [];
+    const current = form[field].trim();
+    const shown =
+      value === null ? '' : AMOUNT_FIELDS.includes(field) ? formatAmount(Number(value), form.currency || null, { withCode: false }) : field === 'invoiceDate' || field === 'dueDate' ? (text ?? String(value)) : String(value);
+    if (value === null || value === '') return current ? [] : [{ field, text: t('review.issueTemplateEmpty') }];
+    if (!current) return [{ field, text: t('review.issueTemplateFill', { value: shown }), use: value }];
+    return sameValue(field, value, current) ? [] : [{ field, text: t('review.issueTemplateDiffers', { value: shown }), use: value }];
+  });
   const issues: Issue[] = [
+    ...templateIssues,
     ...handwrittenIssueFields.map((field) => ({ field, text: t('review.issueHandwritten') })),
     ...(readingChecks?.lines ?? []).flatMap((line): Issue[] => {
       const field = `items.${line.index}`;
@@ -842,12 +898,8 @@ export function ExpenseReviewPage() {
         </button>
       );
     }
-    if (!status) return null;
-    return (
-      <button type="button" className={`field-chip field-chip--${status}`} onClick={(e) => (e.preventDefault(), showField(field))}>
-        {status === 'user' ? t('review.chipSetByYou') : t('review.chipOnDocument')}
-      </button>
-    );
+    // A box that is simply there (found, or set by the user) needs nothing: the document shows it when the field is chosen.
+    return null;
   };
 
   // A field's label, with its chip and the "pick from photo" button when the document is shown with its boxes.
@@ -889,6 +941,39 @@ export function ExpenseReviewPage() {
   const activeBox = activeField ? boxOf(boxes, activeField) : undefined;
   const note = boxNote && boxNote.field === activeField ? boxNote : null;
   /** The line under the chosen field's name: what reading its box gave, or how to work with the box. */
+  const activeTemplateIssue = activeField ? templateIssues.find((i) => i.field === activeField) : undefined;
+  const doubtText = (note: Extract<BoxNote, { kind: 'doubt' }>) =>
+    t('review.looksLikeNote', { what: t(LOOKS_LIKE_LABELS[note.looksLike] ?? 'review.looksLikeOther'), field: boxLabel(note.field) });
+  /** Under a field: Read with AI found something else in its box; "Read anyway" fills it. */
+  const doubtFor = (field: PickField) => {
+    if (boxNote?.kind !== 'doubt' || boxNote.field !== field) return null;
+    const note = boxNote;
+    return (
+      <span className="field-doubt" role="status">
+        <span>{doubtText(note)}</span>
+        <button
+          type="button"
+          className="field-doubt-action"
+          onClick={(e) => {
+            e.preventDefault();
+            fillField(field, note.value);
+          }}
+        >
+          {t('review.readAnyway')}
+        </button>
+        <button
+          type="button"
+          className="field-doubt-action field-doubt-action--quiet"
+          onClick={(e) => {
+            e.preventDefault();
+            setBoxNote(null);
+          }}
+        >
+          {t('common.cancel')}
+        </button>
+      </span>
+    );
+  };
   const selectionHint = (): ReactNode => {
     if (pickStatus === 'reading') return t('review.pickReading');
     if (pickStatus === 'failed') return t('review.pickFailed');
@@ -911,6 +996,7 @@ export function ExpenseReviewPage() {
         </>
       );
     }
+    if (note?.kind === 'doubt') return doubtText(note);
     if (note) {
       return {
         empty: t('review.boxEmpty'),
@@ -919,6 +1005,7 @@ export function ExpenseReviewPage() {
         aiEmpty: t('review.pickNothing')
       }[note.kind];
     }
+    if (activeTemplateIssue) return activeTemplateIssue.text;
     if (!activeBox) return t('review.notMarked');
     return isEditable ? t('review.boxEditHint') : '';
   };
@@ -929,11 +1016,28 @@ export function ExpenseReviewPage() {
         <span className={`doc-selection-dot doc-selection-dot--${activeBox ? toneFor(activeField) : 'missing'}`} aria-hidden="true" />
         <span className="doc-selection-label">
           <strong>{boxLabel(activeField)}</strong>
-          <span className={note && note.kind !== 'filled' ? 'doc-selection-warning' : note || pickStatus ? undefined : 'doc-selection-hint'} aria-live="polite">
+          <span
+            className={
+              (note && note.kind !== 'filled') || (!note && !pickStatus && activeTemplateIssue) ? 'doc-selection-warning' : note || pickStatus ? undefined : 'doc-selection-hint'
+            }
+            aria-live="polite"
+          >
             {selectionHint()}
           </span>
         </span>
         <span className="doc-selection-actions">
+          {isEditable && activeTemplateIssue && isPickField(activeField) && (
+            <>
+              {activeTemplateIssue.use !== undefined && (
+                <button type="button" className="doc-action doc-action--primary" onClick={() => fillField(activeField, activeTemplateIssue.use!)}>
+                  {t('review.useTemplateValue')}
+                </button>
+              )}
+              <button type="button" className="doc-action" onClick={() => setIgnoredTemplateFields((prev) => new Set(prev).add(activeField))}>
+                {t('review.ignoreTemplate')}
+              </button>
+            </>
+          )}
           {isEditable && (
             <button type="button" className="doc-action" onClick={() => startDraw(activeField)}>
               {activeBox ? t('review.redrawBox') : t('review.drawBox')}
@@ -974,11 +1078,12 @@ export function ExpenseReviewPage() {
     ) : null;
 
   /**
-   * Enter moves to the next field or line item (Shift+Enter: the previous one),
+   * Enter moves to the next field or line item; ⌘+Enter on a Mac, Ctrl+Enter elsewhere (and Shift+Enter) to the previous one,
    * which zooms the document to it: checking an invoice field by field from the keyboard.
    */
   const moveOnEnter = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Enter' || e.altKey || e.ctrlKey || e.metaKey || e.nativeEvent.isComposing) return;
+    if (e.key !== 'Enter' || e.altKey || e.nativeEvent.isComposing) return;
+    const back = e.metaKey || e.ctrlKey || e.shiftKey;
     const target = e.target as HTMLElement;
     if (target.tagName === 'TEXTAREA' || target.tagName === 'BUTTON') return;
     const stops = Array.from(
@@ -991,7 +1096,7 @@ export function ExpenseReviewPage() {
     // Caught on the way down, before a field's own Enter handling (the Shamsi date picker's).
     e.preventDefault();
     e.stopPropagation();
-    const next = stops[at + (e.shiftKey ? -1 : 1)];
+    const next = stops[at + (back ? -1 : 1)];
     if (!next) return;
     next.focus();
     if (next instanceof HTMLInputElement) next.select();
@@ -1105,27 +1210,58 @@ export function ExpenseReviewPage() {
   );
 
   const handwrittenCheck = handwrittenFields(expense.errorMessage);
+  /** The reading's warnings as one line of text (shown small in the header next to the document). */
+  const readingWarningText =
+    expense.status === 'EXTRACTED' && expense.errorMessage
+      ? [
+          ...readingWarnings(expense.errorMessage).map(({ key, count }) => t(key, count ? { count } : undefined)),
+          ...(handwrittenCheck
+            ? [
+                `${t('review.handwrittenCheck')}${
+                  handwrittenCheck.length ? ` ${t('review.checkEspecially')} ${handwrittenCheck.map((f) => (FIELD_LABELS[f] ? t(FIELD_LABELS[f]) : f)).join(', ')}` : ''
+                }`
+              ]
+            : [])
+        ].join(' ')
+      : '';
 
   return (
     <div className="review-page">
-      <div className="review-header">
+      {/* With the document: one compact line (back, vendor and facts, status), so the form starts higher. */}
+      <div className={`review-header${showViewer ? ' review-header--compact' : ''}`}>
         <Link className="back-link" to={listPath}>
           {isInvoice ? t('invoices.allInvoices') : t('review.allExpenses')}
         </Link>
+        {showViewer && (
+          <div className="review-title">
+            <h1 dir="auto">{form.vendorName.trim() || t('review.untitled')}</h1>
+            <span className="review-title-facts">
+              {form.totalAmount.trim() && <strong>{formatAmount(form.totalAmount.replace(/,/g, ''), form.currency || null)}</strong>}
+              {form.invoiceNumber.trim() && <span dir="auto">#{form.invoiceNumber.trim()}</span>}
+              {expense.items.length > 0 && <span>{t('review.lineCount', { count: String(expense.items.length) })}</span>}
+            </span>
+            {/* The reading's warnings (handwritten, several invoices…), small, on the same line; the whole text on hover. */}
+            {readingWarningText ? (
+              <span className="review-title-warning" title={readingWarningText} role="note">
+                ⚠ {readingWarningText}
+              </span>
+            ) : (
+              // Just uploaded, nothing to warn about: the same small note says the fields were read automatically.
+              justUploaded &&
+              expense.status === 'EXTRACTED' && (
+                <span className="review-title-warning review-title-warning--info" title={t('review.autoExtractedNotice')} role="note">
+                  ⓘ {t('review.autoExtractedNotice')}
+                </span>
+              )
+            )}
+          </div>
+        )}
         <StatusPill status={expense.status} />
       </div>
-      {showViewer && (
-        <div className="review-title">
-          <h1 dir="auto">{form.vendorName.trim() || t('review.untitled')}</h1>
-          <span className="review-title-facts">
-            {form.totalAmount.trim() && <strong>{formatAmount(form.totalAmount.replace(/,/g, ''), form.currency || null)}</strong>}
-            {form.invoiceNumber.trim() && <span dir="auto">#{form.invoiceNumber.trim()}</span>}
-            {expense.items.length > 0 && <span>{t('review.lineCount', { count: String(expense.items.length) })}</span>}
-          </span>
-        </div>
-      )}
 
-      {justUploaded && expense.status === 'EXTRACTED' && (
+      <TemplateNote />
+
+      {justUploaded && expense.status === 'EXTRACTED' && !showViewer && (
         <div className="alert alert-info">
           <span>{t('review.autoExtractedNotice')}</span>
         </div>
@@ -1154,7 +1290,7 @@ export function ExpenseReviewPage() {
         </div>
       )}
 
-      {expense.status === 'EXTRACTED' && expense.errorMessage && (
+      {expense.status === 'EXTRACTED' && expense.errorMessage && !showViewer && (
         <div className="alert alert-warning">
           {readingWarnings(expense.errorMessage).map(({ key, count }) => (
             <span key={key}>{t(key, count ? { count } : undefined)} </span>
@@ -1382,6 +1518,13 @@ export function ExpenseReviewPage() {
               />
               {!viewerMinimized && (
                 <>
+                  {fieldBoxes.template && (
+                    <p className="viewer-note viewer-note--template">
+                      {t(fieldBoxes.template.shared ? 'review.boxesFromSharedTemplate' : 'review.boxesFromTemplate', {
+                        vendor: fieldBoxes.template.vendorName?.trim() || t('review.untitled')
+                      })}
+                    </p>
+                  )}
                   {boxError && <p className="viewer-note viewer-note--warning">{t('review.boxSaveFailed')}</p>}
                   {fieldBoxes.error && <p className="viewer-note">{t('review.boxesFailed')}</p>}
                   {fieldBoxes.lowResolutionDpi && (
@@ -1447,10 +1590,12 @@ export function ExpenseReviewPage() {
                   <label className={`form-field${linked('vendorName')}`} {...pickProps('vendorName')}>
                     {fieldLabel('vendorName', t('review.vendorName'))}
                     <input dir="auto" value={form.vendorName} onChange={(e) => updateField('vendorName', e.target.value)} />
+                    {doubtFor('vendorName')}
                   </label>
                   <label className={`form-field${linked('vendorTaxId')}`} {...pickProps('vendorTaxId')}>
                     {fieldLabel('vendorTaxId', t('review.taxId'))}
                     <input value={form.vendorTaxId} onChange={(e) => updateField('vendorTaxId', e.target.value)} />
+                    {doubtFor('vendorTaxId')}
                   </label>
                   <label className={`form-field form-field--wide${linked('vendorAddress')}`} {...pickProps('vendorAddress')}>
                     {fieldLabel('vendorAddress', t('review.vendorAddress'))}
@@ -1459,6 +1604,7 @@ export function ExpenseReviewPage() {
                       value={form.vendorAddress}
                       onChange={(e) => updateField('vendorAddress', e.target.value)}
                     />
+                    {doubtFor('vendorAddress')}
                   </label>
                 </div>
               </div>
@@ -1473,6 +1619,7 @@ export function ExpenseReviewPage() {
                       value={form.invoiceNumber}
                       onChange={(e) => updateField('invoiceNumber', e.target.value)}
                     />
+                    {doubtFor('invoiceNumber')}
                   </label>
                   {/* Expense categories are for reimbursement reports; the accounting system books purchase invoices itself. */}
                   {!isInvoice && (
@@ -1491,10 +1638,12 @@ export function ExpenseReviewPage() {
                   <label className={`form-field${linked('invoiceDate')}`} {...pickProps('invoiceDate')}>
                     {fieldLabel('invoiceDate', t('review.invoiceDate'))}
                     <DateInput value={form.invoiceDate} onChange={(value) => updateField('invoiceDate', value)} />
+                    {doubtFor('invoiceDate')}
                   </label>
                   <label className={`form-field${linked('dueDate')}`} {...pickProps('dueDate')}>
                     {fieldLabel('dueDate', t('review.dueDate'))}
                     <DateInput value={form.dueDate} onChange={(value) => updateField('dueDate', value)} />
+                    {doubtFor('dueDate')}
                   </label>
                 </div>
               </div>
@@ -1505,10 +1654,12 @@ export function ExpenseReviewPage() {
                   <label className={`form-field${linked('subtotal')}`} {...pickProps('subtotal')}>
                     {fieldLabel('subtotal', t('review.subtotal'))}
                     <AmountInput value={form.subtotal} onChange={(value) => updateField('subtotal', value)} />
+                    {doubtFor('subtotal')}
                   </label>
                   <label className={`form-field${linked('discountAmount')}`} {...pickProps('discountAmount')}>
                     {fieldLabel('discountAmount', t('review.discount'))}
                     <AmountInput value={form.discountAmount} onChange={(value) => updateField('discountAmount', value)} />
+                    {doubtFor('discountAmount')}
                   </label>
                   <label className="form-field">
                     <span>{t('review.taxRate')}</span>
@@ -1522,10 +1673,12 @@ export function ExpenseReviewPage() {
                   <label className={`form-field${linked('taxAmount')}`} {...pickProps('taxAmount')}>
                     {fieldLabel('taxAmount', t('review.taxAmount'))}
                     <AmountInput value={form.taxAmount} onChange={(value) => updateField('taxAmount', value)} />
+                    {doubtFor('taxAmount')}
                   </label>
                   <label className={`form-field${linked('totalAmount')}`} {...pickProps('totalAmount')}>
                     {fieldLabel('totalAmount', t('review.totalAmount'))}
                     <AmountInput value={form.totalAmount} onChange={(value) => updateField('totalAmount', value)} />
+                    {doubtFor('totalAmount')}
                   </label>
                   <label className="form-field">
                     <span>{t('common.currency')}</span>

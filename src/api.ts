@@ -261,7 +261,7 @@ export async function getCategories(apiBaseUrl = defaultBaseUrl): Promise<Catego
 // each field was read, as boxes in 0–1 fractions of a page image.
 export type FieldBox = {
   field: string;
-  source: 'MODEL' | 'USER';
+  source: 'MODEL' | 'USER' | 'TEMPLATE';
   page: number;
   x: number;
   y: number;
@@ -276,6 +276,10 @@ export type FieldBoxes = {
   boxes: FieldBox[];
   /** Fields with a value but no box: the user can draw one. */
   missing: string[];
+  /** The vendor's template that placed the boxes: this organization's, or shared by another one. */
+  template?: { vendorName: string | null; shared: boolean; timesSent: number };
+  /** What each template box holds (read from its words), in the form's units; null when nothing printed could be read. */
+  templateValues?: { field: string; value: string | number | null; text: string | null }[];
   error?: string;
   /** A scanned PDF below 150 dpi: its dpi (small print is hard to read). */
   lowResolutionDpi?: number;
@@ -353,7 +357,13 @@ export async function readRegion(
   id: string,
   input: { field: string; page: number; region: Region },
   apiBaseUrl = defaultBaseUrl
-): Promise<{ field: string; value: string | number | null; box: FieldBox }> {
+): Promise<{
+  field: string;
+  value: string | number | null;
+  box: FieldBox;
+  /** The framed text is clearly something else (e.g. "customerName" framed as the vendor address): ask before filling. */
+  looksLike?: string;
+}> {
   const response = await fetch(apiUrl(`/api/expenses/${id}/read-region`, apiBaseUrl), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -396,7 +406,10 @@ export async function downloadExpensesExport(status?: ExpenseStatus, apiBaseUrl 
   URL.revokeObjectURL(url);
 }
 
-export async function submitExpense(id: string, apiBaseUrl = defaultBaseUrl): Promise<Expense> {
+/** What sending (or submitting) taught the vendor's invoice template (template-guided reader). */
+export type TemplateLearned = { vendorName: string | null; created: boolean } | null;
+
+export async function submitExpense(id: string, apiBaseUrl = defaultBaseUrl): Promise<Expense & { templateLearned?: TemplateLearned }> {
   const response = await fetch(apiUrl(`/api/expenses/${id}/submit`, apiBaseUrl), {
     method: 'POST',
     headers: authHeaders()
@@ -405,7 +418,7 @@ export async function submitExpense(id: string, apiBaseUrl = defaultBaseUrl): Pr
 }
 
 // Purchase invoices: hands the checked invoice to the accounting system (-> SENT).
-export async function sendInvoiceToAccounting(id: string, apiBaseUrl = defaultBaseUrl): Promise<Expense> {
+export async function sendInvoiceToAccounting(id: string, apiBaseUrl = defaultBaseUrl): Promise<Expense & { templateLearned?: TemplateLearned }> {
   const response = await fetch(apiUrl(`/api/expenses/${id}/send`, apiBaseUrl), {
     method: 'POST',
     headers: authHeaders()

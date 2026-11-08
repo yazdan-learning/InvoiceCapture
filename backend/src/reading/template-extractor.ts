@@ -22,6 +22,7 @@ import { SUMMARY_LINE, withoutTaxLine } from '../ai/invoice-checks';
 import { pageImage } from '../ai/page-image';
 import { EXTRACT_INVOICE, invoiceRereadPrompt } from '../ai/prompts/invoice-structure';
 import { toInvoiceData } from '../ai/replies';
+import { printedDate } from './box-text';
 import { getCalendar } from '../countries/calendars';
 import { CountryProfile } from '../countries/country-profile';
 import { international } from '../countries/international';
@@ -118,7 +119,8 @@ export class TemplateInvoiceExtractor implements InvoiceExtractor {
       smallImage: isSmallImage(upload.buffer, upload.mimetype),
       enlarged
     };
-    const tagged = (r: ExtractionResult, part: Partial<TemplateReadingInfo> = {}) => ({ ...r, raw: { ...(r.raw as object), template: { ...info, ...part } } });
+    const tagged = (r: ExtractionResult, part: Partial<TemplateReadingInfo> = {}) =>
+      withReadDates({ ...r, raw: { ...(r.raw as object), template: { ...info, ...part } } });
 
     // Handwritten (countries with handwriting rules): the vision model reads the photo, OCR runs alongside to compare.
     if (options.handwritten && country.invoice.handwriting) {
@@ -202,6 +204,25 @@ export class TemplateInvoiceExtractor implements InvoiceExtractor {
     const structured = await retryStep(async () => parseJsonObject(await this.large!.complete({ ...EXTRACT_INVOICE, prompt, image })));
     return withoutTaxLine(toInvoiceData(structured, getCalendar(rules.calendar)));
   }
+}
+
+/**
+ * A date the model wrote with words around it ("1405/07/26 (Shamsi)",
+ * "Datum: 07.11.26") is lost by the strict conversion: taken from its text
+ * here (template reader only; the classic one keeps its strict reading).
+ */
+export function withReadDates(result: ExtractionResult): ExtractionResult {
+  const rescue = (data: ExtractedInvoiceData | undefined, raw: unknown) => {
+    const read = (raw as { data?: Record<string, unknown> } | null)?.data;
+    if (!data || !read) return data;
+    const fix = (value: string | null, text: unknown) => (value === null && typeof text === 'string' ? printedDate(text) : value);
+    return { ...data, invoiceDate: fix(data.invoiceDate, read.invoiceDate), dueDate: fix(data.dueDate, read.dueDate) };
+  };
+  return {
+    ...result,
+    data: rescue(result.data, result.raw),
+    ...(result.more ? { more: result.more.map((part) => ({ ...part, data: rescue(part.data, part.raw)! })) } : {})
+  };
 }
 
 /**

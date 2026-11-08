@@ -47,30 +47,49 @@ read every box, including each 0. A dash after digits ("۴۵—") stands for tra
 or "YYYY-MM-DD" for a Gregorian date. Never convert between calendars.`
 };
 
+/** What a framed region can hold, when it isn't what the user framed it as (`looksLike`): shown to the user. */
+export const LOOKS_LIKE = [
+  'vendorName',
+  'vendorAddress',
+  'vendorTaxId',
+  'customerName',
+  'customerAddress',
+  'invoiceNumber',
+  'date',
+  'amount',
+  'phone',
+  'other'
+] as const;
+export type LooksLike = (typeof LOOKS_LIKE)[number];
+
 /**
- * Printed invoices: only the region the user drew, enlarged (a printed value
- * reads on its own, at about half the cost). Handwritten (`withPage`): first the
- * whole page with the region framed in red, then the region enlarged, since a
- * crop alone loses what helps read handwriting (the total in words, the column
+ * Printed invoices: the region framed in red with some of the page around it
+ * (its label shows what it is), enlarged. Handwritten (`withPage`): first the
+ * whole page with the region framed, then the region enlarged, since a crop
+ * alone loses what helps read handwriting (the total in words, the column
  * sums, the other dates). `handwriting` is the country's handwriting rules;
- * `today` is in the country's calendar.
+ * `today` is in the country's calendar. The model reads the value and says
+ * whether it fits what the user framed it as.
  */
 export function readRegionPrompt(kind: FieldKind, label: string, today: string, options: { withPage: boolean; handwriting?: string }): string {
   const { withPage, handwriting } = options;
   const images = withPage
     ? `The first attached image is a page of an invoice${handwriting ? ' filled in by hand' : ''} on which the user framed a region in red; the
-second image is that region enlarged. The user put the frame on ${label}: read what is written inside the red frame.`
-    : `The attached image is a region the user cut out of an invoice page, enlarged. The user put it on ${label}: read what
-is written in it.`;
+second image is that region enlarged.`
+    : `The attached image is part of an invoice page, enlarged, with a region the user framed in red.`;
   const context = withPage
     ? `Use the rest of the page only to read the framed characters better, never take a value from outside the frame: for
 an amount, the line totals and the total in words show which digits are right; for a date, today is ${today} and an
 invoice is almost always from the last few months, so a year far from today's is most likely a misread digit.`
-    : `Text cut off at the edge of the image belongs to its neighbours: leave it out. For a date, today is ${today} and an
-invoice is almost always from the last few months, so a year far from today's is most likely a misread digit.`;
-  return `${images}
+    : `Never take a value from outside the frame. For a date, today is ${today} and an invoice is almost always from the
+last few months, so a year far from today's is most likely a misread digit.`;
+  return `${images} The user framed it as ${label}: read what is written inside the red frame.
 ${KIND_RULES[kind]}
-The user decided what it holds: do not judge whether it is really ${label}, just read it. ${context}${handwriting ? `\nHandwriting:\n${handwriting}` : ''}
-value is null only when nothing is written ${withPage ? 'inside the frame' : 'in it'}${kind === 'text' ? '' : ` or it holds no ${kind}`}.
-Emit ONLY compact JSON (no markdown fences): {"value": string|null}`;
+${context}${handwriting ? `\nHandwriting:\n${handwriting}` : ''}
+Always give the value, even if it seems to be something else. Also say whether it fits: "fits" is false only when the
+framed text is clearly something other than ${label} — its printed label or what it says shows that (for example the
+customer's name or address where the seller's is asked for, a phone number where an amount is asked for); then
+"looksLike" is what it is, one of: ${LOOKS_LIKE.join(', ')}. When in doubt, it fits.
+value is null only when nothing is written inside the frame${kind === 'text' ? '' : ` or it holds no ${kind}`}.
+Emit ONLY compact JSON (no markdown fences): {"value": string|null, "fits": boolean, "looksLike": string|null}`;
 }

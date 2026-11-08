@@ -66,6 +66,11 @@ type Deps = {
   accountingConnectorFor?: (id: string) => AccountingConnector;
   /** The organization's exchange-rate source, by its id (see currency/registry.ts). */
   currencyConverterFor?: (id: string) => CurrencyConverter;
+  /**
+   * After an invoice is sent (or an expense submitted): the template-guided
+   * reader learns the vendor's template from it. Its failure never fails the send.
+   */
+  afterConfirmed?: (organizationId: string, id: string, actor: Actor) => Promise<{ vendorName: string | null; created: boolean } | null>;
 };
 
 // mileageDistanceKm always stores the one-way distance; the round-trip factor
@@ -82,8 +87,20 @@ export function createExpensesService({
   distanceCalculator,
   expensesRepository = prismaExpensesRepository,
   accountingConnectorFor = getAccountingConnector,
-  currencyConverterFor = getCurrencyConverter
+  currencyConverterFor = getCurrencyConverter,
+  afterConfirmed
 }: Deps) {
+  /** The template learned from a confirmed invoice, for the "template created/updated" note; null when none (or it failed). */
+  async function learnFrom(organizationId: string, id: string, actor: Actor) {
+    if (!afterConfirmed) return null;
+    try {
+      return await afterConfirmed(organizationId, id, actor);
+    } catch (err) {
+      console.warn(`invoice template: learning from ${id} failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
   // The calculator throws plain Errors (not set up, no route found, etc.) —
   // rethrow as BadRequestError so the real message reaches the client instead
   // of being masked as a 500 by the global error handler.
@@ -428,7 +445,8 @@ export function createExpensesService({
       if (!approver) {
         // Nobody above them in the hierarchy — nothing to route to, so they're
         // self-certifying. Matches the solo/small-operator case directly.
-        return expensesRepository.update(id, { status: 'APPROVED' });
+        const approved = await expensesRepository.update(id, { status: 'APPROVED' });
+        return { ...approved, templateLearned: await learnFrom(organizationId, id, actor) };
       }
 
       if (!canApprove(approver.role)) {
@@ -438,7 +456,8 @@ export function createExpensesService({
       }
 
       await expensesRepository.createApproval({ expenseId: id, approverId: approver.id, stepOrder: 1 });
-      return expensesRepository.update(id, { status: 'SUBMITTED' });
+      const submitted = await expensesRepository.update(id, { status: 'SUBMITTED' });
+      return { ...submitted, templateLearned: await learnFrom(organizationId, id, actor) };
     },
 
     async decide(
@@ -499,12 +518,13 @@ export function createExpensesService({
 
       try {
         const { reference } = await connector.send(payload);
-        return expensesRepository.update(id, {
+        const sent = await expensesRepository.update(id, {
           status: 'SENT',
           sentToAccountingAt: new Date(),
           accountingRef: reference,
           accountingError: null
         });
+        return { ...sent, templateLearned: await learnFrom(organizationId, id, actor) };
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         await expensesRepository.update(id, { accountingError: message });

@@ -6,7 +6,7 @@ import { ExtractedInvoiceData, ExtractionResult, ExtractOptions, InvoiceExtracto
 import { iran } from '../src/countries/iran';
 import { international } from '../src/countries/international';
 import { parseVatTable } from '@yazdan-learning/ai';
-import { AMOUNTS_FAR_OFF, ReaderSwitchExtractor, TAX_UNCHECKED, TemplateInvoiceExtractor, withVatTable } from '../src/reading/template-extractor';
+import { AMOUNTS_FAR_OFF, ReaderSwitchExtractor, TAX_UNCHECKED, TemplateInvoiceExtractor, withVatTable, withReadDates } from '../src/reading/template-extractor';
 
 const file: UploadedFile = { buffer: Buffer.from('%PDF-1.4'), originalname: 'dm.pdf', mimetype: 'application/pdf', size: 8 } as UploadedFile;
 
@@ -183,5 +183,20 @@ describe('withVatTable', () => {
   it('warns on the expense when the table disagrees', async () => {
     const { reader } = setup({ success: true, data: { ...reading([['A', 1, 12.5, 12.5]], 12.5), taxAmount: 1, subtotal: 11.5 }, raw: {} });
     expect((await reader.extract(file, { country: international })).error).toBe(TAX_UNCHECKED);
+  });
+});
+
+describe('withReadDates', () => {
+  const reading = (invoiceDate: string | null, read: unknown) =>
+    ({ success: true, data: { invoiceDate, dueDate: null } as never, raw: { data: { invoiceDate: read, dueDate: null } } }) as Parameters<typeof withReadDates>[0];
+
+  it('takes the date out of the words the model wrote around it', () => {
+    expect(withReadDates(reading(null, '1405/07/26 (Shamsi)')).data?.invoiceDate).toBe('2026-10-18');
+    expect(withReadDates(reading(null, 'Datum: 07.11.26')).data?.invoiceDate).toBe('2026-11-07');
+  });
+
+  it('leaves a date that was converted, and text without a date', () => {
+    expect(withReadDates(reading('2026-10-01', '1405/07/09')).data?.invoiceDate).toBe('2026-10-01');
+    expect(withReadDates(reading(null, 'unreadable')).data?.invoiceDate).toBeNull();
   });
 });

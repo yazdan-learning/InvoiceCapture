@@ -51,7 +51,12 @@ model Organization {
   // was read) — see backend/src/reading/registry.ts. Switching back is this setting only.
   invoiceReader String @default("CLASSIC")
 
+  // Invoice templates this organization builds are shared with every other
+  // organization (layout only: where each field is, never values or images).
+  shareTemplates Boolean @default(true)
+
   users       User[]
+  invoiceTemplates InvoiceTemplate[]
   expenses     Expense[]
   categories   Category[]
   rawMaterials RawMaterial[]
@@ -227,6 +232,14 @@ model Expense {
   approvals  Approval[]
   fieldBoxes ExpenseFieldBox[]
 
+  // The invoice template whose boxes were used when the review page first
+  // opened it (template-guided reader); on send, it learns from this invoice.
+  templateId String?
+  template   InvoiceTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  // Fields whose box the user removed on this invoice ("Remove"): on send they are dropped from its
+  // vendor's template too. Drawing a box for the field again takes it off this list.
+  removedBoxFields String[] @default([])
+
   @@index([organizationId, status])
   @@index([organizationId, vendorName, invoiceNumber])
 }
@@ -273,8 +286,9 @@ model ExpenseLineItem {
 }
 
 enum FieldBoxSource {
-  MODEL // located by the vision model on the reading's values
-  USER // drawn by the user ("pick from photo"), the value read from that region
+  MODEL // located on the reading's values: word positions, or the vision model
+  USER // drawn, moved or resized by the user (value: what was read from it, if anything)
+  TEMPLATE // placed from the invoice template matched to this vendor/form
 }
 
 // Where on the document a field was read: a box on one page image (see
@@ -375,4 +389,39 @@ model MaterialPriceProposal {
   createdAt DateTime            @default(now())
 
   @@index([materialId, status])
+}
+
+// Where a vendor's (or a form's) fields are on the page, learned when an
+// invoice is sent (or submitted) and used to place the boxes on the next one —
+// also for other organizations (shared): it holds the layout only, never a
+// value, a name other than the vendor's, or a page image.
+model InvoiceTemplate {
+  id             String       @id @default(uuid())
+  // The organization that built it (its own copy is preferred over shared ones).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  shared         Boolean      @default(true)
+
+  // How it is found: the vendor's tax ID (digits) or its name, normalized.
+  vendorTaxId String?
+  vendorKey   String?
+  vendorName  String?
+
+  // Height ÷ width of each page it uses: a page of another shape is another form.
+  pageAspects Json
+  // { [field]: { page, x, y, width, height } } in 0–1 page fractions.
+  fields      Json
+  // The line-items table: { page, x, y, width, height, rowHeight } (rows from its top), or null.
+  items       Json?
+
+  // Trust: invoices sent with it, and how many of those needed its boxes moved.
+  timesSent      Int @default(0)
+  timesCorrected Int @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expenses  Expense[]
+
+  @@index([vendorTaxId])
+  @@index([vendorKey])
 }

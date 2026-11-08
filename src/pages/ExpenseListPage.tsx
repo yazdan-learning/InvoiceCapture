@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { downloadExpensesExport, listExpenses } from '../api';
 import { AppModule, Expense, ExpenseStatus } from '../types';
 import { StatusPill } from '../components/StatusPill';
+import { TemplateNote } from '../components/TemplateNote';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useCountry } from '../country/CountryContext';
 import { formatAmount } from '../lib/money';
@@ -145,6 +146,7 @@ export function ExpenseListPage({ module = 'EXPENSES' }: { module?: ExpenseModul
 
   return (
     <div className="list-page">
+      <TemplateNote />
       <div className="list-toolbar">
         <input
           type="search"

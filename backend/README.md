@@ -347,7 +347,7 @@ back is that setting only. So far `TEMPLATE` reads with the same extractor and a
   Ctrl/⌘ + wheel, pinch; Safari's page pinch is stopped on the document); it opens showing the
   whole page ("Fit"; a long receipt opens at its width), and choosing a field zooms to its box
   gently (about 26 px tall, at most 250%; on a phone 18 px, at most 160%; never further out
-  than the whole page), hovering lights up both; Enter / Shift+Enter moves to the next /
+  than the whole page), hovering lights up both; Enter / ⌘+Enter (Ctrl+Enter on Windows) moves to the next /
   previous field or line item. The chosen box can be dragged to move, its corners to resize (pointer events: mouse,
   finger, pen), or nudged with the arrow keys; it is then saved as the field's `USER` box. Its
   bar offers Redraw, Read from box (free), Read with AI and Remove. Each field shows a chip:
@@ -355,6 +355,30 @@ back is that setting only. So far `TEMPLATE` reads with the same extractor and a
   now" steps through what the checks found (line checks, handwritten fields), zooming to each.
   "Enlarge" shows the document over the page (Esc closes). A scanned PDF under 150 dpi
   (pixels against its MediaBox paper size) gets `lowResolutionDpi` and a "rescan sharper" note.
+- **Invoice templates** (`templates.ts`, `templates.repository.ts`, `InvoiceTemplate`): where a
+  vendor's fields are on its page, as 0–1 page fractions, plus the line-items table (rows of
+  `rowHeight` from its top). Layout only — no values, customers, amounts or page images — so
+  templates are **shared with every organization** (`Organization.shareTemplates`, default on):
+  a new client's first invoice from a vendor uses what other clients taught.
+  - **Learned when an invoice is sent** (or an expense submitted; not on Save):
+    `learnTemplate` takes its final boxes (the user's, else found, else the template's) and
+    creates or updates the organization's own template for the vendor (fields the invoice
+    lacked keep the template's; fields whose box the user **removed** on it — recorded in
+    `Expense.removedBoxFields`, cleared when a box is drawn again — are dropped). The template it used counts one more use, and one more
+    correction when the user moved a box. The send response carries `templateLearned` for the
+    "template saved / updated" note. A learning failure never fails the send.
+  - **Used on first open** (step 1: found by the vendor's tax ID digits, else its normalized
+    name): the organization's own first, else a shared one; most trusted wins (sent often,
+    rarely corrected). Only when the pages have its shape (height ÷ width within 12%).
+    Words first (exact), the template for what they missed (`source: TEMPLATE`), the vision
+    model only if together they place under half. HELIX TOOLS: 23 of 23 from the template,
+    0.5 s, no model call. The template places **every** field it knows, also ones the reading
+    left empty, and stores what each of its boxes holds (`value`, from the words inside, only
+    when the OCR is sure: average confidence ≥ 0.8; a text PDF's words always). The response's
+    `templateValues` give those in the form's units; the review page flags a field as
+    "Check" when the box holds a value the field lacks or a different one (Use it / Ignore), or
+    when the template expects a value and none was read. Next: matching by the form's printed words and the page's look,
+    aligning to the scan, and guiding the reading.
 - **Drawing a box fills the field** (`read-box`, `box-text.ts`, no model): the words whose centre
   lies in the box, in reading order (right to left for Persian lines), from the page words read
   on open, else a text PDF's own words, else Tesseract on just that region. An amount is the
@@ -363,10 +387,12 @@ back is that setting only. So far `TEMPLATE` reads with the same extractor and a
   (Toman as Rial, the exchange rate when converted). Nothing for handwriting, an empty box or
   without `TESSERACT_URL` (`reason`); the form offers Undo after a fill.
 - **Read with AI** (`read-region`, one vision-model call, only on that button): the model sees
-  only the region, enlarged (about half the cost of sending the page too); for a handwritten
-  invoice also the whole page with the region framed, plus the country's handwriting rules (the
-  total in words and the column sums help read handwritten digits). It reads what is there,
-  without judging whether it is the right field. Same unit conversion; a total that lost trailing zeros is fitted to
+  the region framed in red with a margin of the page around it, so its label shows (a fraction
+  of the whole page); for a handwritten invoice the whole page with the region framed and the
+  region enlarged, plus the country's handwriting rules. It always reads the value, and says
+  when the framed text is clearly something else (`looksLike`: e.g. `customerName` framed as
+  the vendor address); the page then shows "This looks like the customer's name, not the
+  vendor address" under the field with **Read anyway** (fills the value already read). Same unit conversion; a total that lost trailing zeros is fitted to
   the line items. The region is kept as the field's `USER` box.
 
 - **Shared checks** (`template-extractor.ts`, from `@yazdan-learning/ai`, the

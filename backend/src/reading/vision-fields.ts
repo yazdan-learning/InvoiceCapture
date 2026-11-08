@@ -1,9 +1,9 @@
 import { LlmClient } from '../ai/gateway/llm';
-import { LOCATE_FIELDS, LocateTarget, locateFieldsPrompt, READ_REGION, readRegionPrompt } from '../ai/prompts/field-boxes';
+import { LOCATE_FIELDS, LocateTarget, locateFieldsPrompt, LOOKS_LIKE, LooksLike, READ_REGION, readRegionPrompt } from '../ai/prompts/field-boxes';
 import { parseJsonObject } from '../ai/replies';
 import { retryStep } from '../ai/retry';
 import { FieldKind } from './fields';
-import { cropRegion, jpegDataUrl, markRegion, PageImage, Region } from './page-images';
+import { cropRegion, jpegDataUrl, markRegion, PageImage, Region, regionInContext } from './page-images';
 
 export type LocatedBox = Region & { field: string; page: number };
 
@@ -44,9 +44,11 @@ export function toBoxes(answer: Record<string, unknown>, known: Set<string>, pag
 }
 
 /**
- * What the vision model reads in one region of a page, as text; null when it
- * found nothing. It sees the region enlarged; for handwriting (`withPage`) also
- * the whole page with the region framed.
+ * What the vision model reads in one region of a page, as text (null: nothing
+ * found), and — when the framed text is clearly something else than the field
+ * (a customer's name framed as the vendor's address) — what it looks like.
+ * Printed: the region with some page around it; handwritten (`withPage`): the
+ * whole page with the region framed, and the region enlarged.
  */
 export async function readRegionValue(
   vision: LlmClient,
@@ -55,12 +57,14 @@ export async function readRegionValue(
   kind: FieldKind,
   label: string,
   context: { today: string; withPage: boolean; handwriting?: string }
-): Promise<string | null> {
+): Promise<{ value: string | null; looksLike: LooksLike | null }> {
   const prompt = readRegionPrompt(kind, label, context.today, { withPage: context.withPage, handwriting: context.handwriting });
-  const crop = jpegDataUrl(await cropRegion(page, region));
-  const image = context.withPage ? [jpegDataUrl(await markRegion(page, region)), crop] : [crop];
+  const image = context.withPage
+    ? [jpegDataUrl(await markRegion(page, region)), jpegDataUrl(await cropRegion(page, region))]
+    : [jpegDataUrl(await regionInContext(page, region))];
   const answer = await retryStep(async () => parseJsonObject(await vision.complete({ ...READ_REGION, prompt, image })));
-  const value = answer.value;
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
+  const raw = answer.value;
+  const value = typeof raw === 'number' && Number.isFinite(raw) ? String(raw) : typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+  const looksLike = answer.fits === false && (LOOKS_LIKE as readonly unknown[]).includes(answer.looksLike) ? (answer.looksLike as LooksLike) : null;
+  return { value, looksLike };
 }
