@@ -45,7 +45,8 @@ export function toBoxes(answer: Record<string, unknown>, known: Set<string>, pag
 
 /**
  * What the vision model reads in one region of a page, as text; null when it
- * found nothing. It sees the whole page with the region framed, and the region enlarged.
+ * found nothing. It sees the region enlarged; for handwriting (`withPage`) also
+ * the whole page with the region framed.
  */
 export async function readRegionValue(
   vision: LlmClient,
@@ -53,10 +54,11 @@ export async function readRegionValue(
   region: Region,
   kind: FieldKind,
   label: string,
-  context: { today: string; handwriting?: string }
+  context: { today: string; withPage: boolean; handwriting?: string }
 ): Promise<string | null> {
-  const prompt = readRegionPrompt(kind, label, context.today, context.handwriting);
-  const image = [jpegDataUrl(await markRegion(page, region)), jpegDataUrl(await cropRegion(page, region))];
+  const prompt = readRegionPrompt(kind, label, context.today, { withPage: context.withPage, handwriting: context.handwriting });
+  const crop = jpegDataUrl(await cropRegion(page, region));
+  const image = context.withPage ? [jpegDataUrl(await markRegion(page, region)), crop] : [crop];
   const answer = await retryStep(async () => parseJsonObject(await vision.complete({ ...READ_REGION, prompt, image })));
   const value = answer.value;
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);

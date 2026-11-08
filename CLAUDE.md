@@ -55,7 +55,7 @@ rows; to inspect data, run a small `tsx` script with the Prisma client.
   `extractor-classic-v1`, on the shared package's gateway and checks) and `TEMPLATE`
   (template-guided, `backend/src/reading/`, for every kind of file: printed, handwritten, several
   invoices in one file; small-photo enlarging, tall images read in pieces, VAT-code fix, tax and net from the VAT table, foreign receipts, total/payment lines in the common European languages, line checks, field
-  boxes, pick from photo; template matching next). Keep `CLASSIC`'s behaviour unchanged: new
+  boxes (Tesseract word positions on open via `TESSERACT_URL`, one vision-model call only when they place under half — Persian scans, handwriting; the user draws, moves, resizes or removes any box; a drawn box fills its field from the words inside it, free; "Read with AI" is the only other model call on the review page); template matching next). Keep `CLASSIC`'s behaviour unchanged: new
   reading behaviour goes behind `TEMPLATE`, which replaces `CLASSIC` once it is stable.
 - **Amounts** in the UI go through `src/lib/money.ts` and `AmountInput` (thousands separators).
 - **Translations**: every new UI string goes into all four files in `src/i18n/translations/`

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { KeyboardEvent as ReactKeyboardEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   decideExpense,
@@ -11,15 +11,18 @@ import {
   getReadingChecks,
   getSupportedCurrencies,
   listExpenses,
+  moveFieldBox,
   previewMileageDistance,
+  readBox,
   readRegion,
+  removeFieldBox,
   sendInvoiceToAccounting,
   submitExpense,
   updateExpense
 } from '../api';
-import type { FieldBoxes, ReadingChecks, Region } from '../api';
+import type { BoxReadReason, FieldBox, FieldBoxes, ReadingChecks, Region } from '../api';
 import { Category, Expense } from '../types';
-import { DocumentViewer } from '../components/DocumentViewer';
+import { BoxTone, DocumentViewer } from '../components/DocumentViewer';
 import { IconPickRegion } from '../components/icons';
 import { StatusPill } from '../components/StatusPill';
 import { LocationAutocompleteInput } from '../components/LocationAutocompleteInput';
@@ -180,6 +183,20 @@ const BOX_LABELS: Record<PickField, string> = {
   totalAmount: 'review.totalAmount'
 };
 
+/** One box per field: the one the user set wins over the one that was found. */
+function boxOf(boxes: FieldBox[], field: string): FieldBox | undefined {
+  return boxes.find((b) => b.field === field && b.source === 'USER') ?? boxes.find((b) => b.field === field);
+}
+
+/** Something on the reading to compare with the document ("Review now" steps through them). */
+type Issue = { field: string; text: string };
+
+/** After reading a box: the value filled in (with the one it replaced, for undo), or why there was none. */
+type BoxNote = { field: string; kind: 'filled'; previous: string | null } | { field: string; kind: BoxReadReason | 'aiEmpty' };
+
+/** A field's state on the document, for its chip in the form. */
+type FieldStatus = 'user' | 'model' | 'missing' | null;
+
 export function ExpenseReviewPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -217,8 +234,22 @@ export function ExpenseReviewPage() {
   const [readingChecks, setReadingChecks] = useState<ReadingChecks | null>(null);
   const [fixingLine, setFixingLine] = useState<number | null>(null);
   const [activeField, setActiveField] = useState<string | null>(null);
-  const [pickingField, setPickingField] = useState<PickField | null>(null);
-  const [pickStatus, setPickStatus] = useState<'reading' | 'nothing' | 'failed' | null>(null);
+  /** Zooms the document into a field's box: set when a field is chosen in the form, not on the photo. */
+  const [zoomRequest, setZoomRequest] = useState<{ field: string; n: number } | null>(null);
+  const [viewerExpanded, setViewerExpanded] = useState(false);
+  /** Phone: the document panel shrunk to its toolbar. */
+  const [viewerMinimized, setViewerMinimized] = useState(false);
+  /** The field under the mouse (form or document): both light up. */
+  const [hoverField, setHoverField] = useState<string | null>(null);
+  /** Drawing a box for a field; a field's box is then read from the words inside it. */
+  const [drawing, setDrawing] = useState<{ field: string } | null>(null);
+  const [pickStatus, setPickStatus] = useState<'reading' | 'failed' | null>(null);
+  const [boxNote, setBoxNote] = useState<BoxNote | null>(null);
+  const [boxError, setBoxError] = useState(false);
+  /** "Review now": the issue shown, or null before starting. */
+  const [issueIndex, setIssueIndex] = useState<number | null>(null);
+  /** Every field that had a value to place (with or without a box): one without a box is "not found". */
+  const targetsRef = useRef<Set<string>>(new Set());
   const asideRef = useRef<HTMLDivElement | null>(null);
 
   const load = () => {
@@ -254,6 +285,26 @@ export function ExpenseReviewPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [id]);
 
+  // What reading a box said belongs to that field: gone when another one is chosen.
+  useEffect(() => {
+    setBoxNote((note) => (note && note.field === activeField ? note : null));
+    setPickStatus((status) => (status === 'reading' ? status : null));
+  }, [activeField]);
+
+  // Esc leaves the enlarged document (a pick in progress is cancelled first).
+  useEffect(() => {
+    if (!viewerExpanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (drawing) {
+        setDrawing(null);
+        setPickStatus(null);
+      } else setViewerExpanded(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [viewerExpanded, drawing]);
+
   // The file route requires auth, so <img src> can't hit it directly — fetch it
   // as an authenticated blob instead and point the image at that. Mileage
   // expenses have no attached document, so skip the request entirely rather
@@ -281,9 +332,10 @@ export function ExpenseReviewPage() {
   useEffect(() => {
     if (!id || !expense || expense.expenseType === 'MILEAGE') return;
     let cancelled = false;
+    targetsRef.current = new Set();
     getFieldBoxes(id)
       .then((result) => {
-        if (!cancelled) setFieldBoxes(result);
+        if (!cancelled) setBoxes(result);
       })
       .catch(() => {
         if (!cancelled) setFieldBoxes(null);
@@ -363,9 +415,20 @@ export function ExpenseReviewPage() {
     return check.compare ? <span className="line-item-check line-item-check--soft">{t('review.comparePrice')}</span> : null;
   };
 
+  /** The boxes as they are now; fields that had a value to place are remembered, so one whose box is removed shows as not found. */
+  const setBoxes = (result: FieldBoxes) => {
+    for (const f of [...result.missing, ...result.boxes.map((b) => b.field)]) targetsRef.current.add(f);
+    setFieldBoxes(result);
+  };
+
+  const updateBoxes = (boxes: FieldBox[]) => {
+    for (const b of boxes) targetsRef.current.add(b.field);
+    setFieldBoxes((prev) => (prev ? { ...prev, boxes } : prev));
+  };
+
   const boxLabel = (field: string) => {
     const item = /^items\.(\d+)$/.exec(field);
-    if (item) return `${t('review.lineItems')} ${Number(item[1]) + 1}`;
+    if (item) return t('review.lineN', { n: String(Number(item[1]) + 1) });
     return isPickField(field) ? t(BOX_LABELS[field]) : field;
   };
 
@@ -373,44 +436,132 @@ export function ExpenseReviewPage() {
     document.getElementById(`field-${field}`)?.querySelector('input')?.focus();
   };
 
+  /** A field chosen in the form: highlight its box and zoom the document into it. */
+  const showField = (field: string) => {
+    setActiveField(field);
+    setZoomRequest((prev) => ({ field, n: (prev?.n ?? 0) + 1 }));
+    // Phone: the document is pinned above the form, so keep the field just below it, not hidden under it.
+    if (!isDesktop) {
+      window.setTimeout(() => {
+        const row = document.getElementById(field.startsWith('items.') ? `line-${field.slice(6)}` : `field-${field}`);
+        const panel = asideRef.current;
+        if (!row || !panel || viewerExpanded) return;
+        const below = panel.getBoundingClientRect().bottom + 12;
+        const top = row.getBoundingClientRect().top;
+        if (top < below || top > window.innerHeight - 80) window.scrollBy({ top: top - below, behavior: 'smooth' });
+      }, 80);
+    }
+  };
+
+  /** The form row of a field (a form field or a line item), scrolled into view in the form. */
+  const formRowOf = (field: string) => document.getElementById(field.startsWith('items.') ? `line-${field.slice(6)}` : `field-${field}`);
+
   const selectBox = (field: string) => {
     setActiveField(field);
     if (isPickField(field)) focusField(field);
+    else formRowOf(field)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
 
-  const startPick = (field: PickField) => {
-    setPickingField(field);
+  /** Draw a box for a field (its value is then read from the words inside it). */
+  const startDraw = (field: string) => {
+    setDrawing({ field });
     setPickStatus(null);
-    setActiveField(field);
-    // On a phone the document sits above the form.
-    if (!isDesktop) asideRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    setBoxNote(null);
+    showField(field);
+    // A phone's document panel is small: drawing gets the whole screen.
+    if (!isDesktop) {
+      setViewerMinimized(false);
+      setViewerExpanded(true);
+    }
   };
 
-  const cancelPick = () => {
-    setPickingField(null);
+  const cancelDraw = () => {
+    setDrawing(null);
     setPickStatus(null);
   };
 
-  const handlePick = async (page: number, region: Region) => {
-    if (!id || !pickingField) return;
-    const field = pickingField;
+  /** Puts a value read from the document in the form, remembering the one it replaced (undo). */
+  const fillField = (field: PickField, value: string | number) => {
+    const next = AMOUNT_FIELDS.includes(field) ? toAmountInput(String(value)) : String(value);
+    const previous = form?.[field] ?? '';
+    updateField(field, next);
+    setBoxNote({ field, kind: 'filled', previous: previous !== next ? previous : null });
+  };
+
+  /**
+   * Reads a field's value from a box and puts it in the form; the box is kept as
+   * the field's. From the words inside it (free), or with the vision model (`ai`).
+   */
+  const readBoxInto = async (field: PickField, page: number, region: Region, ai: boolean): Promise<boolean> => {
+    if (!id) return false;
     setPickStatus('reading');
+    setBoxNote(null);
+    setFieldBoxes((prev) =>
+      prev ? { ...prev, boxes: [...prev.boxes.filter((b) => !(b.source === 'USER' && b.field === field)), { field, source: 'USER', page, ...region, value: null }] } : prev
+    );
     try {
-      const result = await readRegion(id, { field, page, region });
+      const result = ai ? await readRegion(id, { field, page, region }) : await readBox(id, { field, page, region });
       setFieldBoxes((prev) =>
         prev ? { ...prev, boxes: [...prev.boxes.filter((b) => !(b.source === 'USER' && b.field === field)), result.box] } : prev
       );
-      if (result.value === null || result.value === '') {
-        // Stay in pick mode: the user can draw again.
-        setPickStatus('nothing');
-        return;
-      }
-      updateField(field, AMOUNT_FIELDS.includes(field) ? toAmountInput(String(result.value)) : String(result.value));
-      setPickingField(null);
       setPickStatus(null);
-      focusField(field);
+      if (result.value === null || result.value === '') {
+        setBoxNote({ field, kind: ai ? 'aiEmpty' : ((result as { reason?: BoxReadReason }).reason ?? 'empty') });
+        return false;
+      }
+      fillField(field, result.value);
+      return true;
     } catch {
       setPickStatus('failed');
+      return false;
+    }
+  };
+
+  /** The user moved, resized or drew a box: shown at once, then saved (no AI; the value stays). */
+  const moveBox = useCallback(
+    async (field: string, page: number, region: Region) => {
+      if (!id) return;
+      setBoxError(false);
+      setFieldBoxes((prev) => {
+        if (!prev) return prev;
+        const value = prev.boxes.find((b) => b.field === field && b.source === 'USER')?.value ?? null;
+        return { ...prev, boxes: [...prev.boxes.filter((b) => !(b.field === field && b.source === 'USER')), { field, source: 'USER', page, ...region, value }] };
+      });
+      try {
+        updateBoxes((await moveFieldBox(id, field, page, region)).boxes);
+      } catch {
+        setBoxError(true);
+        getFieldBoxes(id).then(setBoxes).catch(() => undefined);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id]
+  );
+
+  const handleDraw = async (page: number, region: Region) => {
+    if (!drawing) return;
+    const { field } = drawing;
+    setDrawing(null);
+    setActiveField(field);
+    // Line items only get their box; a form field is read from it too.
+    if (!isPickField(field)) {
+      await moveBox(field, page, region);
+      return;
+    }
+    // On a phone, back to the form where the value just landed (with nothing read, the document stays for "Read with AI").
+    if ((await readBoxInto(field, page, region, false)) && !isDesktop) {
+      setViewerExpanded(false);
+      focusField(field);
+    }
+  };
+
+  const removeBox = async (field: string) => {
+    if (!id) return;
+    setBoxError(false);
+    try {
+      updateBoxes((await removeFieldBox(id, field)).boxes);
+    } catch {
+      setBoxError(true);
     }
   };
 
@@ -631,30 +782,220 @@ export function ExpenseReviewPage() {
   const isEditable = ['EXTRACTED', 'FAILED', 'REJECTED'].includes(expense.status) && !isMyApproval;
 
   const showViewer = Boolean(fieldBoxes?.enabled && fieldBoxes.pages.length);
-  // A field's label, with the "pick from photo" button when the document is shown with its boxes.
-  const fieldLabel = (field: PickField, text: string) =>
-    showViewer && isEditable ? (
-      <span className="field-label-row">
-        <span>{text}</span>
+  const boxes = fieldBoxes?.boxes ?? [];
+
+  /** Where a field stands on the document: set by the user, found, not found (it has a value but no box), or nothing to place. */
+  const fieldStatus = (field: string): FieldStatus => {
+    const box = boxOf(boxes, field);
+    if (box) return box.source === 'USER' ? 'user' : 'model';
+    return targetsRef.current.has(field) ? 'missing' : null;
+  };
+
+  // "Review now": what the checks found, in the order of the form.
+  const handwrittenIssueFields = (handwrittenFields(expense.errorMessage) ?? []).flatMap((f) =>
+    f === 'items' ? expense.items.map((_, i) => `items.${i}`).slice(0, 1) : isPickField(f) ? [f] : []
+  );
+  const issues: Issue[] = [
+    ...handwrittenIssueFields.map((field) => ({ field, text: t('review.issueHandwritten') })),
+    ...(readingChecks?.lines ?? []).flatMap((line): Issue[] => {
+      const field = `items.${line.index}`;
+      if (line.suggested !== undefined) return [{ field, text: t('review.issuePrice') }];
+      if (line.quantityTimesPrice) return [{ field, text: t('review.issueQuantity') }];
+      return line.compare ? [{ field, text: t('review.issueCompare') }] : [];
+    })
+  ];
+  const issueFields = new Set(issues.map((i) => i.field));
+  const toneFor = (field: string): BoxTone => (issueFields.has(field) ? 'check' : fieldStatus(field) === 'user' ? 'user' : 'model');
+
+  const goToIssue = (index: number) => {
+    const issue = issues[index];
+    if (!issue) return;
+    setIssueIndex(index);
+    showField(issue.field);
+    formRowOf(issue.field)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
+
+  /** A small chip after a field's label: where the field stands on the document; "not found" offers to find it (AI). */
+  const statusChip = (field: string) => {
+    if (!showViewer) return null;
+    if (issueFields.has(field)) {
+      return (
+        <button type="button" className="field-chip field-chip--check" onClick={(e) => (e.preventDefault(), showField(field))}>
+          {t('review.chipCheck')}
+        </button>
+      );
+    }
+    const status = fieldStatus(field);
+    if (status === 'missing') {
+      return (
         <button
           type="button"
-          className={`pick-button${pickingField === field ? ' pick-button--active' : ''}`}
-          title={t('review.pickFromPhoto')}
-          aria-label={`${t('review.pickFromPhoto')}: ${text}`}
-          disabled={pickStatus === 'reading'}
+          className="field-chip field-chip--missing"
+          title={isEditable ? t('review.drawBox') : undefined}
           onClick={(e) => {
             e.preventDefault();
-            if (pickingField === field) cancelPick();
-            else startPick(field);
+            if (isEditable) startDraw(field);
+            else showField(field);
           }}
         >
-          <IconPickRegion />
+          {t('review.chipNotFound')}
         </button>
+      );
+    }
+    if (!status) return null;
+    return (
+      <button type="button" className={`field-chip field-chip--${status}`} onClick={(e) => (e.preventDefault(), showField(field))}>
+        {status === 'user' ? t('review.chipSetByYou') : t('review.chipOnDocument')}
+      </button>
+    );
+  };
+
+  // A field's label, with its chip and the "pick from photo" button when the document is shown with its boxes.
+  const fieldLabel = (field: PickField, text: string) =>
+    showViewer ? (
+      <span className="field-label-row">
+        <span>{text}</span>
+        <span className="field-label-tools">
+          {statusChip(field)}
+          {isEditable && (
+            <button
+              type="button"
+              className={`pick-button${drawing?.field === field ? ' pick-button--active' : ''}`}
+              title={t('review.pickFromPhoto')}
+              aria-label={`${t('review.pickFromPhoto')}: ${text}`}
+              disabled={pickStatus === 'reading'}
+              onClick={(e) => {
+                e.preventDefault();
+                if (drawing?.field === field) cancelDraw();
+                else startDraw(field);
+              }}
+            >
+              <IconPickRegion />
+            </button>
+          )}
+        </span>
       </span>
     ) : (
       <span>{text}</span>
     );
-  const pickProps = (field: PickField) => ({ id: `field-${field}`, onFocus: () => setActiveField(field) });
+  const linked = (field: string) => (hoverField === field || activeField === field ? ' form-field--linked' : '');
+  const pickProps = (field: PickField) => ({
+    id: `field-${field}`,
+    onFocus: () => showField(field),
+    onMouseEnter: () => setHoverField(field),
+    onMouseLeave: () => setHoverField(null)
+  });
+
+  const activeBox = activeField ? boxOf(boxes, activeField) : undefined;
+  const note = boxNote && boxNote.field === activeField ? boxNote : null;
+  /** The line under the chosen field's name: what reading its box gave, or how to work with the box. */
+  const selectionHint = (): ReactNode => {
+    if (pickStatus === 'reading') return t('review.pickReading');
+    if (pickStatus === 'failed') return t('review.pickFailed');
+    if (note?.kind === 'filled') {
+      return (
+        <>
+          {t('review.filledFromBox')}
+          {note.previous !== null && isPickField(note.field) && (
+            <button
+              type="button"
+              className="doc-selection-undo"
+              onClick={() => {
+                updateField(note.field as PickField, note.previous!);
+                setBoxNote(null);
+              }}
+            >
+              {t('review.undo')}
+            </button>
+          )}
+        </>
+      );
+    }
+    if (note) {
+      return {
+        empty: t('review.boxEmpty'),
+        handwritten: t('review.boxHandwritten'),
+        unavailable: t('review.boxUnavailable'),
+        aiEmpty: t('review.pickNothing')
+      }[note.kind];
+    }
+    if (!activeBox) return t('review.notMarked');
+    return isEditable ? t('review.boxEditHint') : '';
+  };
+  // Under the document's toolbar: the chosen field and what can be done with its box.
+  const selectionBar =
+    activeField && !drawing ? (
+      <div className="doc-selection" role="group" aria-label={boxLabel(activeField)}>
+        <span className={`doc-selection-dot doc-selection-dot--${activeBox ? toneFor(activeField) : 'missing'}`} aria-hidden="true" />
+        <span className="doc-selection-label">
+          <strong>{boxLabel(activeField)}</strong>
+          <span className={note && note.kind !== 'filled' ? 'doc-selection-warning' : note || pickStatus ? undefined : 'doc-selection-hint'} aria-live="polite">
+            {selectionHint()}
+          </span>
+        </span>
+        <span className="doc-selection-actions">
+          {isEditable && (
+            <button type="button" className="doc-action" onClick={() => startDraw(activeField)}>
+              {activeBox ? t('review.redrawBox') : t('review.drawBox')}
+            </button>
+          )}
+          {isEditable && activeBox && isPickField(activeField) && (
+            <>
+              <button
+                type="button"
+                className="doc-action"
+                disabled={pickStatus === 'reading'}
+                title={t('review.readFromBoxHint')}
+                onClick={() => void readBoxInto(activeField, activeBox.page, activeBox, false)}
+              >
+                {t('review.readFromBox')}
+              </button>
+              <button
+                type="button"
+                className="doc-action doc-action--ai"
+                disabled={pickStatus === 'reading'}
+                title={t('review.readValueHint')}
+                onClick={() => void readBoxInto(activeField, activeBox.page, activeBox, true)}
+              >
+                {t('review.readValue')}
+              </button>
+            </>
+          )}
+          {isEditable && activeBox && (
+            <button type="button" className="doc-action doc-action--danger" onClick={() => void removeBox(activeField)}>
+              {t('review.removeBox')}
+            </button>
+          )}
+          <button type="button" className="doc-action doc-action--icon" aria-label={t('review.collapseViewer')} title={t('review.collapseViewer')} onClick={() => setActiveField(null)}>
+            ×
+          </button>
+        </span>
+      </div>
+    ) : null;
+
+  /**
+   * Enter moves to the next field or line item (Shift+Enter: the previous one),
+   * which zooms the document to it: checking an invoice field by field from the keyboard.
+   */
+  const moveOnEnter = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' || e.altKey || e.ctrlKey || e.metaKey || e.nativeEvent.isComposing) return;
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'TEXTAREA' || target.tagName === 'BUTTON') return;
+    const stops = Array.from(
+      e.currentTarget.querySelectorAll<HTMLElement>(
+        '.review-fieldset input:not([type=checkbox]):not([type=hidden]):not(:disabled), .review-fieldset [data-review-stop]'
+      )
+    ).filter((el) => el.offsetParent !== null);
+    const at = stops.indexOf(target);
+    if (at < 0) return;
+    // Caught on the way down, before a field's own Enter handling (the Shamsi date picker's).
+    e.preventDefault();
+    e.stopPropagation();
+    const next = stops[at + (e.shiftKey ? -1 : 1)];
+    if (!next) return;
+    next.focus();
+    if (next instanceof HTMLInputElement) next.select();
+  };
 
   // Live preview from the current (possibly unsaved) form values — reflects
   // edits immediately instead of showing the stale last-saved totalAmount.
@@ -773,6 +1114,16 @@ export function ExpenseReviewPage() {
         </Link>
         <StatusPill status={expense.status} />
       </div>
+      {showViewer && (
+        <div className="review-title">
+          <h1 dir="auto">{form.vendorName.trim() || t('review.untitled')}</h1>
+          <span className="review-title-facts">
+            {form.totalAmount.trim() && <strong>{formatAmount(form.totalAmount.replace(/,/g, ''), form.currency || null)}</strong>}
+            {form.invoiceNumber.trim() && <span dir="auto">#{form.invoiceNumber.trim()}</span>}
+            {expense.items.length > 0 && <span>{t('review.lineCount', { count: String(expense.items.length) })}</span>}
+          </span>
+        </div>
+      )}
 
       {justUploaded && expense.status === 'EXTRACTED' && (
         <div className="alert alert-info">
@@ -994,21 +1345,16 @@ export function ExpenseReviewPage() {
           </div>
         </div>
       ) : (
-        <div className="detail-layout">
+        <div className={showViewer ? 'review-workspace' : 'detail-layout'}>
           {showViewer && fieldBoxes ? (
-            <div className="detail-layout-aside detail-layout-aside--viewer" ref={asideRef}>
-              {pickingField && (
-                <div className={`pick-banner${pickStatus === 'failed' || pickStatus === 'nothing' ? ' pick-banner--error' : ''}`} role="status">
-                  <span>
-                    {pickStatus === 'reading'
-                      ? t('review.pickReading')
-                      : pickStatus === 'nothing'
-                        ? t('review.pickNothing')
-                        : pickStatus === 'failed'
-                          ? t('review.pickFailed')
-                          : t('review.pickHint', { field: boxLabel(pickingField) })}
-                  </span>
-                  <button type="button" onClick={cancelPick}>
+            <div
+              className={`review-workspace-doc${viewerExpanded ? ' review-workspace-doc--expanded' : ''}${viewerMinimized && !viewerExpanded ? ' review-workspace-doc--minimized' : ''}`}
+              ref={asideRef}
+            >
+              {drawing && (
+                <div className="pick-banner" role="status">
+                  <span>{t('review.pickHint', { field: boxLabel(drawing.field) })}</span>
+                  <button type="button" onClick={cancelDraw}>
                     {t('common.cancel')}
                   </button>
                 </div>
@@ -1018,12 +1364,31 @@ export function ExpenseReviewPage() {
                 pages={fieldBoxes.pages}
                 boxes={fieldBoxes.boxes}
                 activeField={activeField}
-                picking={Boolean(pickingField) && pickStatus !== 'reading'}
-                onPick={handlePick}
+                hoverField={hoverField}
+                zoomRequest={zoomRequest}
+                expanded={viewerExpanded}
+                onToggleExpanded={() => setViewerExpanded((v) => !v)}
+                minimized={viewerMinimized}
+                onToggleMinimized={isDesktop ? undefined : () => setViewerMinimized((v) => !v)}
+                drawing={Boolean(drawing)}
+                onDraw={handleDraw}
+                editable={isEditable}
+                onMoveBox={moveBox}
                 onSelectField={selectBox}
+                onHoverField={setHoverField}
                 labelFor={boxLabel}
+                toneFor={toneFor}
+                selectionBar={selectionBar}
               />
-              {fieldBoxes.error && <p className="viewer-note">{t('review.boxesFailed')}</p>}
+              {!viewerMinimized && (
+                <>
+                  {boxError && <p className="viewer-note viewer-note--warning">{t('review.boxSaveFailed')}</p>}
+                  {fieldBoxes.error && <p className="viewer-note">{t('review.boxesFailed')}</p>}
+                  {fieldBoxes.lowResolutionDpi && (
+                    <p className="viewer-note viewer-note--warning">{t('review.lowResolution', { dpi: String(fieldBoxes.lowResolutionDpi) })}</p>
+                  )}
+                </>
+              )}
             </div>
           ) : (
           <div className="detail-layout-aside">
@@ -1039,20 +1404,55 @@ export function ExpenseReviewPage() {
           </div>
           )}
 
-          <div className="review-form">
+          <div className={`review-form${showViewer ? ' review-workspace-form' : ''}`} onKeyDownCapture={showViewer ? moveOnEnter : undefined}>
+            {showViewer && issues.length > 0 && (
+              <div className="review-guide" role="region" aria-label={t('review.issuesCount', { count: String(issues.length) })}>
+                <span className="review-guide-icon" aria-hidden="true">
+                  !
+                </span>
+                <span className="review-guide-text">
+                  <strong>{t('review.issuesCount', { count: String(issues.length) })}</strong>
+                  {issueIndex !== null && issues[issueIndex] && (
+                    <span>
+                      {boxLabel(issues[issueIndex].field)}: {issues[issueIndex].text}
+                    </span>
+                  )}
+                </span>
+                {issueIndex === null ? (
+                  <button type="button" className="review-guide-start" onClick={() => goToIssue(0)}>
+                    {t('review.reviewNow')}
+                  </button>
+                ) : (
+                  <span className="review-guide-steps">
+                    <button type="button" aria-label={t('review.previousIssue')} disabled={issueIndex === 0} onClick={() => goToIssue(issueIndex - 1)}>
+                      ‹
+                    </button>
+                    <span>{t('review.issueOf', { n: String(issueIndex + 1), count: String(issues.length) })}</span>
+                    <button
+                      type="button"
+                      aria-label={t('review.nextIssue')}
+                      disabled={issueIndex >= issues.length - 1}
+                      onClick={() => goToIssue(issueIndex + 1)}
+                    >
+                      ›
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
             <fieldset className="review-fieldset" disabled={!isEditable}>
               <div className="form-section">
                 <h3>{t('review.vendorSection')}</h3>
                 <div className="form-grid">
-                  <label className="form-field" {...pickProps('vendorName')}>
+                  <label className={`form-field${linked('vendorName')}`} {...pickProps('vendorName')}>
                     {fieldLabel('vendorName', t('review.vendorName'))}
                     <input dir="auto" value={form.vendorName} onChange={(e) => updateField('vendorName', e.target.value)} />
                   </label>
-                  <label className="form-field" {...pickProps('vendorTaxId')}>
+                  <label className={`form-field${linked('vendorTaxId')}`} {...pickProps('vendorTaxId')}>
                     {fieldLabel('vendorTaxId', t('review.taxId'))}
                     <input value={form.vendorTaxId} onChange={(e) => updateField('vendorTaxId', e.target.value)} />
                   </label>
-                  <label className="form-field form-field--wide" {...pickProps('vendorAddress')}>
+                  <label className={`form-field form-field--wide${linked('vendorAddress')}`} {...pickProps('vendorAddress')}>
                     {fieldLabel('vendorAddress', t('review.vendorAddress'))}
                     <input
                       dir="auto"
@@ -1066,7 +1466,7 @@ export function ExpenseReviewPage() {
               <div className="form-section">
                 <h3>{t('review.invoiceSection')}</h3>
                 <div className="form-grid">
-                  <label className="form-field" {...pickProps('invoiceNumber')}>
+                  <label className={`form-field${linked('invoiceNumber')}`} {...pickProps('invoiceNumber')}>
                     {fieldLabel('invoiceNumber', t('review.invoiceNumber'))}
                     <input
                       dir="auto"
@@ -1088,11 +1488,11 @@ export function ExpenseReviewPage() {
                       />
                     </label>
                   )}
-                  <label className="form-field" {...pickProps('invoiceDate')}>
+                  <label className={`form-field${linked('invoiceDate')}`} {...pickProps('invoiceDate')}>
                     {fieldLabel('invoiceDate', t('review.invoiceDate'))}
                     <DateInput value={form.invoiceDate} onChange={(value) => updateField('invoiceDate', value)} />
                   </label>
-                  <label className="form-field" {...pickProps('dueDate')}>
+                  <label className={`form-field${linked('dueDate')}`} {...pickProps('dueDate')}>
                     {fieldLabel('dueDate', t('review.dueDate'))}
                     <DateInput value={form.dueDate} onChange={(value) => updateField('dueDate', value)} />
                   </label>
@@ -1102,11 +1502,11 @@ export function ExpenseReviewPage() {
               <div className="form-section">
                 <h3>{t('review.amountsSection')}</h3>
                 <div className="form-grid">
-                  <label className="form-field" {...pickProps('subtotal')}>
+                  <label className={`form-field${linked('subtotal')}`} {...pickProps('subtotal')}>
                     {fieldLabel('subtotal', t('review.subtotal'))}
                     <AmountInput value={form.subtotal} onChange={(value) => updateField('subtotal', value)} />
                   </label>
-                  <label className="form-field" {...pickProps('discountAmount')}>
+                  <label className={`form-field${linked('discountAmount')}`} {...pickProps('discountAmount')}>
                     {fieldLabel('discountAmount', t('review.discount'))}
                     <AmountInput value={form.discountAmount} onChange={(value) => updateField('discountAmount', value)} />
                   </label>
@@ -1119,11 +1519,11 @@ export function ExpenseReviewPage() {
                       onChange={(e) => updateField('taxRate', e.target.value)}
                     />
                   </label>
-                  <label className="form-field" {...pickProps('taxAmount')}>
+                  <label className={`form-field${linked('taxAmount')}`} {...pickProps('taxAmount')}>
                     {fieldLabel('taxAmount', t('review.taxAmount'))}
                     <AmountInput value={form.taxAmount} onChange={(value) => updateField('taxAmount', value)} />
                   </label>
-                  <label className="form-field" {...pickProps('totalAmount')}>
+                  <label className={`form-field${linked('totalAmount')}`} {...pickProps('totalAmount')}>
                     {fieldLabel('totalAmount', t('review.totalAmount'))}
                     <AmountInput value={form.totalAmount} onChange={(value) => updateField('totalAmount', value)} />
                   </label>
@@ -1197,9 +1597,20 @@ export function ExpenseReviewPage() {
                         </thead>
                         <tbody>
                           {expense.items.map((item, index) => (
-                            <tr key={item.id} onMouseEnter={() => setActiveField(`items.${index}`)}>
+                            <tr
+                              key={item.id}
+                              id={`line-${index}`}
+                              tabIndex={showViewer ? 0 : undefined}
+                              data-review-stop={showViewer ? '' : undefined}
+                              onFocus={showViewer ? () => showField(`items.${index}`) : undefined}
+                              className={linked(`items.${index}`).trim()}
+                              onMouseEnter={() => setHoverField(`items.${index}`)}
+                              onMouseLeave={() => setHoverField(null)}
+                              onClick={() => showField(`items.${index}`)}
+                            >
                               <td dir="auto">
                                 {item.description}
+                                {showViewer && <span className="line-item-chip">{statusChip(`items.${index}`)}</span>}
                                 {lineCheck(index)}
                               </td>
                               <td className="align-right">{formatQuantity(item.quantity)}</td>
@@ -1213,11 +1624,19 @@ export function ExpenseReviewPage() {
                   ) : (
                     <ul className="line-item-list">
                       {expense.items.map((item, index) => (
-                        <li key={item.id} className="line-item" onClick={() => setActiveField(`items.${index}`)}>
+                        <li
+                          key={item.id}
+                          id={`line-${index}`}
+                          tabIndex={showViewer ? 0 : undefined}
+                          data-review-stop={showViewer ? '' : undefined}
+                          className={`line-item${linked(`items.${index}`)}`}
+                          onClick={() => showField(`items.${index}`)}
+                        >
                           <span className="line-item-main">
                             <span className="line-item-description" dir="auto">
                               {item.description}
                             </span>
+                            {showViewer && <span className="line-item-chip">{statusChip(`items.${index}`)}</span>}
                             <span className="line-item-sub">
                               {formatQuantity(item.quantity)} × {formatAmount(item.unitPrice, expense.currency, { withCode: false })}
                             </span>

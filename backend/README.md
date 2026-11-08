@@ -168,9 +168,12 @@ unless `ADMIN`, purchase invoices are shared between accountants/admins. Pass
 | GET | `/api/expenses` | list, filters: `status`, `search`, `page`, `pageSize` |
 | GET | `/api/expenses/:id` | single expense detail |
 | GET | `/api/expenses/:id/file` | the original uploaded document (RECEIPT type only) |
-| GET | `/api/expenses/:id/field-boxes` | template-guided reader only: page sizes and a box per field where it was read (located on the first call) |
+| GET | `/api/expenses/:id/field-boxes` | template-guided reader only: page sizes, a box per field where it was read (from word positions on the first call, no AI) and `missing` (fields with a value but no box) |
+| PUT | `/api/expenses/:id/field-boxes/:field` | template-guided reader only: the user moved, resized or drew a field's box (`{ page, region }`); kept as `USER`, no AI, the value unchanged |
+| DELETE | `/api/expenses/:id/field-boxes/:field` | template-guided reader only: remove a field's boxes (it shows as not found) |
 | GET | `/api/expenses/:id/pages/:page` | one page of the document as an upright JPEG (the image the boxes refer to) |
-| POST | `/api/expenses/:id/read-region` | template-guided reader only: read one field from a region the user drew (`{ field, page, region }`, 0–1 fractions) |
+| POST | `/api/expenses/:id/read-box` | template-guided reader only: "Read from box", the field's value from the words inside a region the user drew (`{ field, page, region }`, 0–1 fractions); free, no model; `reason` when there is none |
+| POST | `/api/expenses/:id/read-region` | template-guided reader only: "Read with AI", the vision model reads one field from a region the user drew (same body) |
 | PATCH | `/api/expenses/:id` | edit fields (uploader; any accountant/admin for a purchase invoice) — no status here |
 | DELETE | `/api/expenses/:id` | delete a draft, failed or rejected expense (same rule as editing) |
 | POST | `/api/expenses/:id/send` | send a purchase invoice to the org's accounting system (ACCOUNTANT/ADMIN) |
@@ -314,16 +317,57 @@ Tests: `test/pricing.service.test.ts`, `test/material-matchers.test.ts` (Jev wit
 marks it); `TEMPLATE` is the template-guided reader being built in `src/reading/`. Switching
 back is that setting only. So far `TEMPLATE` reads with the same extractor and adds:
 
-- **Field boxes**: the first time the review page opens an invoice, the vision model is
-  shown the page images (`page-images.ts`: upright, at most 2000 px) and the values as read
-  (printed units, rawExtraction.data) and returns a box per field and line item
-  (`ExpenseFieldBox`, source `MODEL`; `Expense.boxesLocatedAt` marks it done). Text PDFs have
-  no page images, so no boxes.
-- **Pick from photo**: the user draws a region; the model sees the page with the region
-  framed and the region enlarged (with the country's handwriting rules for a handwritten
-  invoice) and returns the value, converted to the form's units (Toman as Rial, the exchange
-  rate when converted, Shamsi dates to ISO; a total that lost trailing zeros is fitted to the
-  line items). The region is kept as the field's `USER` box.
+- **Field boxes**: the first time the review page opens an invoice, the values as read
+  (printed units, rawExtraction.data) are placed on the page images (`page-images.ts`: upright,
+  at most 2000 px) and saved as `ExpenseFieldBox` (source `MODEL`; `Expense.boxesLocatedAt`
+  marks it done):
+  1. **Word positions first** (`word-boxes.ts`, no model): with `TESSERACT_URL` set, each page
+     image goes to our Tesseract service (`ai-packages/services/ocr-tesseract`; small pages
+     enlarged) in the country's `ocrLanguages` (`fas+eng` for Iran, `eng+deu+tur` otherwise and
+     for foreign receipts). Each value is looked up among the words: amounts by value, the copy
+     next to its label when printed twice; dates in any common order; IDs without punctuation;
+     names and addresses by their words; line items as rows in order down the page, at most 6
+     rows past the last one. Not found = not guessed.
+  2. **The vision model only when the words aren't enough**: when they place less than half of
+     the values (Persian scans and boxed tables — Tesseract garbles their digits —, handwriting,
+     which it can't read, blurry photos), one call places the rest, rougher; when it fails the
+     word boxes are kept. A field still without a box is listed in `missing` ("Not marked"); the
+     user draws it.
+  On the Lidl receipts the words placed 37–38 of 38 (no model call); on Persian scans 0–2 of
+  6–23, so there the model is called once per invoice, on first open (HELIX: 23 of 23, 4 s).
+  The page words are kept in memory (last 20 invoices) for "read from box".
+  **PDFs made from text** (e-invoices, exports; no photos inside) are drawn as page images by
+  the same service (`/render`, 200 dpi), so they get the viewer, boxes and pick from photo too.
+  Their boxes come from the PDF's own words (exact, no OCR); Persian stored backwards in the
+  PDF ("لایرس هرامش") is turned around by the service. Without `TESSERACT_URL` they keep the
+  "open document" link only.
+- **Viewer** (`src/components/DocumentViewer.tsx`): on a laptop the form is on the left and the
+  document on the right, pinned while the form scrolls; on a phone the document is pinned
+  above the form (it can be hidden) and drawing opens it full screen. Zoom 100–500% (buttons,
+  Ctrl/⌘ + wheel, pinch; Safari's page pinch is stopped on the document); it opens showing the
+  whole page ("Fit"; a long receipt opens at its width), and choosing a field zooms to its box
+  gently (about 26 px tall, at most 250%; on a phone 18 px, at most 160%; never further out
+  than the whole page), hovering lights up both; Enter / Shift+Enter moves to the next /
+  previous field or line item. The chosen box can be dragged to move, its corners to resize (pointer events: mouse,
+  finger, pen), or nudged with the arrow keys; it is then saved as the field's `USER` box. Its
+  bar offers Redraw, Read from box (free), Read with AI and Remove. Each field shows a chip:
+  on document, set by you, not marked (click to draw), check. "Review
+  now" steps through what the checks found (line checks, handwritten fields), zooming to each.
+  "Enlarge" shows the document over the page (Esc closes). A scanned PDF under 150 dpi
+  (pixels against its MediaBox paper size) gets `lowResolutionDpi` and a "rescan sharper" note.
+- **Drawing a box fills the field** (`read-box`, `box-text.ts`, no model): the words whose centre
+  lies in the box, in reading order (right to left for Persian lines), from the page words read
+  on open, else a text PDF's own words, else Tesseract on just that region. An amount is the
+  last number in it ("Summe 16,72" → 16.72, "-0,40", "۲٬۳۹۰٬۰۰۰"), a date the first date (day
+  first as printed in Europe, year first, Shamsi converted). Then converted to the form's units
+  (Toman as Rial, the exchange rate when converted). Nothing for handwriting, an empty box or
+  without `TESSERACT_URL` (`reason`); the form offers Undo after a fill.
+- **Read with AI** (`read-region`, one vision-model call, only on that button): the model sees
+  only the region, enlarged (about half the cost of sending the page too); for a handwritten
+  invoice also the whole page with the region framed, plus the country's handwriting rules (the
+  total in words and the column sums help read handwritten digits). It reads what is there,
+  without judging whether it is the right field. Same unit conversion; a total that lost trailing zeros is fitted to
+  the line items. The region is kept as the field's `USER` box.
 
 - **Shared checks** (`template-extractor.ts`, from `@yazdan-learning/ai`, the
   package shared with Nestmate): a photo under 600 px on its short side is enlarged 2× (for the
@@ -351,4 +395,4 @@ Scripts: `scripts/eval-extract.ts` scores readings against confirmed invoices (f
 readings; `--rerun` reads the files again, at the cost of one reading each);
 `scripts/try-boxes.ts --out=<folder> <expenseId>...` draws the located boxes on the pages.
 
-Tests: `test/reading.test.ts` (vision model faked).
+Tests: `test/reading.test.ts` (vision model and word OCR faked), `test/word-boxes.test.ts`.

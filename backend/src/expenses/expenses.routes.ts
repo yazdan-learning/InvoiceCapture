@@ -12,6 +12,7 @@ import { DirectInvoiceExtractor } from './adapters/direct-extractor';
 import { ReaderSwitchExtractor, TemplateInvoiceExtractor } from '../reading/template-extractor';
 import { MistralOcr } from '../ai/gateway/mistral-ocr';
 import { OpenAiCompatibleLlm } from '../ai/gateway/openai-compatible';
+import { TesseractOcr } from '@yazdan-learning/ai';
 import { LocalDiskFileStorage } from './adapters/local-disk-storage';
 import { S3FileStorage } from './adapters/s3-file-storage';
 import { GoogleDirectionsCalculator } from './adapters/google-directions';
@@ -80,12 +81,16 @@ const expensesService = createExpensesService({
 });
 const expensesController = createExpensesController(expensesService);
 
-// Field boxes and "pick from photo" (organizations on the template-guided
-// reader): read with the vision model, or with the main LLM when no separate
-// vision model is configured.
+// Field boxes (organizations on the template-guided reader): boxes and "read
+// from box" from the Tesseract service's word positions when TESSERACT_URL is
+// set (which also draws PDFs made from text as page images); "Read with AI"
+// with the vision model, or with the main LLM when no separate vision model is configured.
+const wordOcr = env.tesseract.url ? new TesseractOcr({ baseUrl: env.tesseract.url, token: env.tesseract.token, languages: env.tesseract.languages, timeoutMs: env.tesseract.timeoutMs }) : null;
 const readingService = createReadingService({
   expenses: expensesService,
   fileStorage,
+  words: () => wordOcr,
+  renderer: () => wordOcr,
   vision: () =>
     env.vision.apiKey
       ? new OpenAiCompatibleLlm({ ...env.vision, models: { fast: env.vision.model, smart: env.vision.model } })

@@ -62,6 +62,8 @@ export const iran: CountryProfile = {
   calendar: 'persian',
   // Persian UI text is right-to-left; kept 'ltr' until the UI has a Persian translation.
   direction: 'ltr',
+  // Persian with Latin (brand names, codes). Foreign receipts get the international languages.
+  ocrLanguages: 'fas+eng',
   invoice: {
     dateFormat: '"YYYY-MM-DD"|"YYYY/MM/DD (Shamsi)"|null',
     promptRules: PERSIAN_INVOICE_RULES,

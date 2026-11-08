@@ -24,6 +24,20 @@ export const readingRepository = {
     ]);
   },
 
+  /** Moved or drawn by the user: a value read from an earlier box of theirs is kept. */
+  async moveUserBox(expenseId: string, box: LocatedBox): Promise<void> {
+    const { field, ...position } = box;
+    await prisma.expenseFieldBox.upsert({
+      where: { expenseId_field_source: { expenseId, field, source: 'USER' } },
+      create: { expenseId, field, source: 'USER', ...position },
+      update: position
+    });
+  },
+
+  async removeBoxes(expenseId: string, field: string): Promise<void> {
+    await prisma.expenseFieldBox.deleteMany({ where: { expenseId, field } });
+  },
+
   async saveUserBox(expenseId: string, box: LocatedBox, value: string | null): Promise<void> {
     const { field, ...position } = box;
     await prisma.expenseFieldBox.upsert({

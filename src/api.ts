@@ -274,7 +274,11 @@ export type FieldBoxes = {
   enabled: boolean;
   pages: { index: number; width: number; height: number }[];
   boxes: FieldBox[];
+  /** Fields with a value but no box: the user can draw one. */
+  missing: string[];
   error?: string;
+  /** A scanned PDF below 150 dpi: its dpi (small print is hard to read). */
+  lowResolutionDpi?: number;
 };
 
 export type Region = { x: number; y: number; width: number; height: number };
@@ -309,6 +313,42 @@ export async function getPageImageBlobUrl(id: string, page: number, apiBaseUrl =
 }
 
 /** The field's value read from the region the user drew: a number for amounts, "YYYY-MM-DD" for dates. */
+/** The user moved, resized or drew a field's box (no AI: the field's value stays as it is). */
+export async function moveFieldBox(id: string, field: string, page: number, region: Region, apiBaseUrl = defaultBaseUrl): Promise<{ boxes: FieldBox[] }> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}/field-boxes/${encodeURIComponent(field)}`, apiBaseUrl), {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page, region })
+  });
+  return parseJsonOrThrow(response);
+}
+
+export async function removeFieldBox(id: string, field: string, apiBaseUrl = defaultBaseUrl): Promise<{ boxes: FieldBox[] }> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}/field-boxes/${encodeURIComponent(field)}`, apiBaseUrl), {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  return parseJsonOrThrow(response);
+}
+
+/** Why reading a box gave no value: handwriting, nothing printed in it, or no word OCR on the server. */
+export type BoxReadReason = 'handwritten' | 'empty' | 'unavailable';
+
+/** "Read from box" (free): the field's value from the words inside the drawn box; the box is kept as the field's. */
+export async function readBox(
+  id: string,
+  input: { field: string; page: number; region: Region },
+  apiBaseUrl = defaultBaseUrl
+): Promise<{ field: string; value: string | number | null; read: string | null; box: FieldBox; reason?: BoxReadReason }> {
+  const response = await fetch(apiUrl(`/api/expenses/${id}/read-box`, apiBaseUrl), {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input)
+  });
+  return parseJsonOrThrow(response);
+}
+
+/** "Read with AI": the vision model reads the drawn box (one model call). */
 export async function readRegion(
   id: string,
   input: { field: string; page: number; region: Region },

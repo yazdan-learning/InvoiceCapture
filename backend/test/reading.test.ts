@@ -1,10 +1,12 @@
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
-import { cropRegion, documentPages } from '../src/reading/page-images';
+import { cropRegion, documentPages, pdfPaperInches, scanDpi } from '../src/reading/page-images';
 import { ReadingRepository, StoredBox } from '../src/reading/reading.repository';
 import { createReadingService, locateTargets, ReadableExpense } from '../src/reading/reading.service';
+import { printedAmount, printedDate, regionText } from '../src/reading/box-text';
 import { LocatedBox, toBoxes } from '../src/reading/vision-fields';
 import { FileStorage } from '../src/expenses/ports';
+import type { OcrWord, PdfRenderer, PositionedOcrClient } from '@yazdan-learning/ai';
 import { FakeLlm } from './fakes';
 
 const actor = { userId: 'u1', role: 'ACCOUNTANT' as const };
@@ -47,20 +49,66 @@ class MemoryRepository implements ReadingRepository {
     this.located++;
     this.boxes = [...this.boxes.filter((b) => b.source !== 'MODEL'), ...boxes.map((b) => ({ ...b, source: 'MODEL' as const, value: null }))];
   }
+  async moveUserBox(_id: string, box: LocatedBox) {
+    const value = this.boxes.find((b) => b.source === 'USER' && b.field === box.field)?.value ?? null;
+    this.boxes = [...this.boxes.filter((b) => !(b.source === 'USER' && b.field === box.field)), { ...box, source: 'USER', value }];
+  }
+  async removeBoxes(_id: string, field: string) {
+    this.boxes = this.boxes.filter((b) => b.field !== field);
+  }
   async saveUserBox(_id: string, box: LocatedBox, value: string | null) {
     this.boxes = [...this.boxes.filter((b) => !(b.source === 'USER' && b.field === box.field)), { ...box, source: 'USER', value }];
   }
 }
 
-async function service(options: { reader?: string; answer?: Record<string, unknown>; expense?: ReadableExpense } = {}) {
-  const file = await jpeg(400, 200);
+/** Word OCR answering with the given words on every page, or failing. */
+class FakeWords implements PositionedOcrClient {
+  calls: { languages?: string; contentType?: string }[] = [];
+  constructor(private readonly words: OcrWord[] | Error) {}
+  async readWords(file: { contentType: string }, options: { languages?: string } = {}) {
+    this.calls.push({ ...options, contentType: file.contentType });
+    if (this.words instanceof Error) throw this.words;
+    return { pages: [{ index: 0, width: 400, height: 200, source: 'ocr' as const, text: '', words: this.words }] };
+  }
+  async extractText() {
+    return '';
+  }
+}
+
+const word = (text: string, x: number, y: number): OcrWord => ({ text, confidence: 0.9, line: 0, box: { x, y, width: 0.1, height: 0.04 } });
+
+/** Draws every PDF as one white 300 x 400 page. */
+const fakeRenderer = (): PdfRenderer & { calls: number } => {
+  const renderer = {
+    calls: 0,
+    async renderPdf() {
+      renderer.calls++;
+      return [{ index: 0, width: 300, height: 400, buffer: await jpeg(300, 400) }];
+    }
+  };
+  return renderer;
+};
+
+async function service(
+  options: { reader?: string; answer?: Record<string, unknown> | Error; expense?: ReadableExpense; words?: FakeWords; renderer?: PdfRenderer; file?: Buffer } = {}
+) {
+  const file = options.file ?? (await jpeg(400, 200));
   const storage: FileStorage = { save: async () => '', read: async () => file, delete: async () => {} };
-  const vision = new FakeLlm(options.answer ?? { boxes: [] });
+  const vision = new FakeLlm(options.answer instanceof Error ? {} : (options.answer ?? { boxes: [] }));
+  if (options.answer instanceof Error) {
+    const failure = options.answer;
+    vision.complete = async (request) => {
+      vision.requests.push(request);
+      throw failure;
+    };
+  }
   const repository = new MemoryRepository(options.reader);
   const reading = createReadingService({
     expenses: { getById: async () => options.expense ?? expense() },
     fileStorage: storage,
     vision: () => vision,
+    words: options.words ? () => options.words! : undefined,
+    renderer: options.renderer ? () => options.renderer! : undefined,
     repository
   });
   return { reading, vision, repository };
@@ -114,6 +162,18 @@ describe('page images', () => {
     expect(await documentPages(Buffer.from('%PDF-1.4 text only'), 'application/pdf')).toEqual([]);
   });
 
+  it("measures a scan's dpi on its paper: the side that fills the page", () => {
+    const a4 = pdfPaperInches(Buffer.from('%PDF-1.4 1 0 obj << /Type /Page /MediaBox [0 0 595 842] >> endobj'))!;
+    expect(a4.width).toBeCloseTo(8.26, 2);
+    expect(a4.height).toBeCloseTo(11.69, 2);
+    // A CamScanner page: 746 x 1000 px fills the width (90 dpi); a narrower one fills the height.
+    expect(scanDpi({ width: 746, height: 1000 }, a4)).toBe(90);
+    expect(scanDpi({ width: 462, height: 1000 }, a4)).toBe(86);
+    expect(pdfPaperInches(Buffer.from('no media box'))).toBeNull();
+    // A PDF made from a photo: one point per pixel, a 34 x 46 inch "page". Not paper, so no dpi.
+    expect(pdfPaperInches(Buffer.from('/MediaBox[ 0 0 2452 3308]'))).toBeNull();
+  });
+
   it('enlarges a small region so the model can read its digits', async () => {
     const [page] = await documentPages(await jpeg(400, 200), 'image/jpeg');
     const meta = await sharp(await cropRegion(page, { x: 0.5, y: 0.5, width: 0.1, height: 0.1 })).metadata();
@@ -124,25 +184,53 @@ describe('page images', () => {
 describe('reading service', () => {
   it('shows no boxes and calls no AI for an organization on the classic reader', async () => {
     const { reading, vision } = await service({ reader: 'CLASSIC' });
-    expect(await reading.getFieldBoxes('org', 'e1', actor)).toEqual({ enabled: false, pages: [], boxes: [] });
+    expect(await reading.getFieldBoxes('org', 'e1', actor)).toEqual({ enabled: false, pages: [], boxes: [], missing: [] });
     expect(vision.requests).toHaveLength(0);
   });
 
-  it('locates the fields the first time and keeps them', async () => {
-    const { reading, vision, repository } = await service({
-      answer: { boxes: [{ field: 'invoiceNumber', page: 0, box_2d: [50, 600, 90, 900] }] }
-    });
+  it('without word OCR, one vision model call places the fields; what it misses stays missing', async () => {
+    const { reading, vision, repository } = await service({ answer: { boxes: [{ field: 'invoiceNumber', page: 0, box_2d: [50, 600, 90, 900] }] } });
     const result = await reading.getFieldBoxes('org', 'e1', actor);
     expect(result.pages).toEqual([{ index: 0, width: 400, height: 200 }]);
     expect(result.boxes.map((b) => b.field)).toEqual(['invoiceNumber']);
-    expect(vision.requests[0].image).toHaveLength(1);
+    expect(result.missing.sort()).toEqual(['invoiceDate', 'items.0', 'totalAmount', 'vendorName']);
+    expect(vision.requests).toHaveLength(1);
     expect(repository.located).toBe(1);
   });
 
   it('does not locate again once located', async () => {
-    const { reading, vision } = await service({ expense: expense({ boxesLocatedAt: new Date() }) });
+    const ocr = new FakeWords([]);
+    const { reading } = await service({ words: ocr, expense: expense({ boxesLocatedAt: new Date() }) });
     await reading.getFieldBoxes('org', 'e1', actor);
-    expect(vision.requests).toHaveLength(0);
+    expect(ocr.calls).toHaveLength(0);
+  });
+
+  it("keeps a moved box as the user's, with what was read from it", async () => {
+    const { reading, repository } = await service();
+    repository.boxes = [
+      { field: 'totalAmount', page: 0, x: 0.1, y: 0.1, width: 0.1, height: 0.1, source: 'MODEL', value: null },
+      { field: 'totalAmount', page: 0, x: 0.1, y: 0.1, width: 0.1, height: 0.1, source: 'USER', value: '125,000' }
+    ];
+    const region = { x: 0.5, y: 0.6, width: 0.2, height: 0.05 };
+    const { boxes } = await reading.moveFieldBox('org', 'e1', actor, { field: 'totalAmount', page: 0, region });
+    expect(boxes.find((b) => b.source === 'USER')).toEqual({ field: 'totalAmount', page: 0, ...region, source: 'USER', value: '125,000' });
+  });
+
+  it('moves line-item boxes, refuses unknown fields and locked documents', async () => {
+    const region = { x: 0.5, y: 0.6, width: 0.2, height: 0.05 };
+    const { reading } = await service();
+    await expect(reading.moveFieldBox('org', 'e1', actor, { field: 'items.0', page: 0, region })).resolves.toBeTruthy();
+    await expect(reading.moveFieldBox('org', 'e1', actor, { field: 'items.5', page: 0, region })).rejects.toThrow('no box');
+    await expect(reading.moveFieldBox('org', 'e1', actor, { field: 'notes', page: 0, region })).rejects.toThrow('no box');
+    await expect(reading.moveFieldBox('org', 'e1', actor, { field: 'totalAmount', page: 3, region })).rejects.toThrow('no such page');
+    const sent = await service({ expense: expense({ status: 'SENT' }) });
+    await expect(sent.reading.moveFieldBox('org', 'e1', actor, { field: 'totalAmount', page: 0, region })).rejects.toThrow('no longer be edited');
+  });
+
+  it("removes a field's boxes, which then counts as missing", async () => {
+    const { reading, repository } = await service();
+    repository.boxes = [{ field: 'totalAmount', page: 0, x: 0.1, y: 0.1, width: 0.1, height: 0.1, source: 'MODEL', value: null }];
+    expect((await reading.removeFieldBox('org', 'e1', actor, 'totalAmount')).boxes).toEqual([]);
   });
 
   it('reads an amount from the drawn region in the stored unit (Toman as Rial)', async () => {
@@ -151,17 +239,21 @@ describe('reading service', () => {
     const result = await reading.readRegion('org', 'e1', actor, { field: 'totalAmount', page: 0, region });
     expect(result.value).toBe(1250000);
     expect(vision.requests[0].prompt).toContain('the total amount to pay');
-    expect(vision.requests[0].image).toHaveLength(2);
+    // A printed invoice: only the region, enlarged.
+    expect(vision.requests[0].image).toHaveLength(1);
     expect(repository.boxes).toEqual([{ field: 'totalAmount', page: 0, ...region, source: 'USER', value: '۱۲۵,۰۰۰' }]);
   });
 
   it('restores the trailing zeros a handwritten total lost when the line items add up to it', async () => {
-    const { reading } = await service({
+    const { reading, vision } = await service({
       answer: { value: '16920000' },
       expense: expense({ rawExtraction: { mode: 'handwritten', data: { currency: 'IRR' } }, items: [{ description: 'اکسیژن', totalPrice: 163200000 }, { description: 'کرایه حمل', totalPrice: 6000000 }] })
     });
     const result = await reading.readRegion('org', 'e1', actor, { field: 'totalAmount', page: 0, region: { x: 0, y: 0, width: 0.2, height: 0.1 } });
     expect(result.value).toBe(169200000);
+    // Handwriting: the whole page with the region framed, then the region.
+    expect(vision.requests[0].image).toHaveLength(2);
+    expect(vision.requests[0].prompt).toContain('red frame');
   });
 
   it('keeps a total that the line items do not explain', async () => {
@@ -191,6 +283,93 @@ describe('reading service', () => {
     await expect(reading.readRegion('org', 'e1', actor, { field: 'notes', page: 0, region })).rejects.toThrow('cannot be picked');
     const sent = await service({ expense: expense({ status: 'SENT' }) });
     await expect(sent.reading.readRegion('org', 'e1', actor, { field: 'totalAmount', page: 0, region })).rejects.toThrow('no longer be edited');
+  });
+});
+
+describe('field boxes from word positions', () => {
+  // The invoice number 4521 and the total 125,000 are on the page; the vendor and the line item are not.
+  const words = () => new FakeWords([word('Nr.', 0.1, 0.1), word('4521', 0.25, 0.1), word('جمع', 0.1, 0.8), word('125,000', 0.25, 0.8)]);
+
+  it('when the words place less than half, asks the vision model for the rest only', async () => {
+    const ocr = words();
+    const { reading, vision } = await service({ words: ocr, answer: { boxes: [{ field: 'vendorName', page: 0, box_2d: [0, 0, 50, 300] }] } });
+    const result = await reading.getFieldBoxes('org', 'e1', actor);
+    expect(result.boxes.map((b) => b.field).sort()).toEqual(['invoiceNumber', 'totalAmount', 'vendorName']);
+    expect(result.boxes.find((b) => b.field === 'invoiceNumber')).toMatchObject({ x: 0.25, y: 0.1 });
+    expect(result.missing.sort()).toEqual(['invoiceDate', 'items.0']);
+    expect(vision.requests).toHaveLength(1);
+    expect(vision.requests[0].prompt).toContain('vendorName');
+    expect(vision.requests[0].prompt).not.toContain('invoiceNumber (');
+    // The Iranian organization's languages.
+    expect(ocr.calls[0].languages).toBe('fas+eng');
+  });
+
+  it('does not call the vision model when the words place half or more', async () => {
+    const { reading, vision } = await service({
+      words: words(),
+      expense: expense({ vendorName: null, items: [{ description: 'میلگرد', totalPrice: 1250000 }], rawExtraction: { data: { invoiceNumber: '4521', totalAmount: 125000 } } })
+    });
+    const result = await reading.getFieldBoxes('org', 'e1', actor);
+    expect(result.boxes.map((b) => b.field).sort()).toEqual(['invoiceNumber', 'totalAmount']);
+    expect(vision.requests).toHaveLength(0);
+  });
+
+  it('keeps the boxes from the words when the vision model fails', async () => {
+    const { reading, repository } = await service({ words: words(), answer: new Error('vision down') });
+    const result = await reading.getFieldBoxes('org', 'e1', actor);
+    expect(result.error).toBeUndefined();
+    expect(result.boxes.map((b) => b.field).sort()).toEqual(['invoiceNumber', 'totalAmount']);
+    expect(repository.located).toBe(1);
+    // The vision call is tried 3 times, 3 s apart.
+  }, 15_000);
+
+  it('falls back to the vision model for everything when the word OCR fails', async () => {
+    const { reading, vision } = await service({ words: new FakeWords(new Error('ECONNREFUSED')) });
+    const result = await reading.getFieldBoxes('org', 'e1', actor);
+    expect(result.error).toBeUndefined();
+    expect(vision.requests[0].prompt).toContain('invoiceNumber');
+  });
+
+  it('skips the word OCR for handwriting, which it cannot read', async () => {
+    const ocr = words();
+    const { reading, vision } = await service({ words: ocr, expense: expense({ rawExtraction: { mode: 'handwritten', data: { invoiceNumber: '4521' } } }) });
+    await reading.getFieldBoxes('org', 'e1', actor);
+    expect(ocr.calls).toHaveLength(0);
+    expect(vision.requests).toHaveLength(1);
+  });
+
+  it('reads a foreign receipt in an Iranian organization with the international languages', async () => {
+    const ocr = words();
+    const { reading } = await service({ words: ocr, expense: expense({ rawExtraction: { template: { foreignReceipt: true }, data: { invoiceNumber: '4521' } } }) });
+    await reading.getFieldBoxes('org', 'e1', actor);
+    expect(ocr.calls[0].languages).toBe('eng+deu+tur');
+  });
+});
+
+describe('PDF made from text', () => {
+  const textPdf = Buffer.from('%PDF-1.4 1 0 obj << /Type /Page /MediaBox [0 0 595 842] >> endobj');
+  const pdfExpense = () => expense({ filePath: 'org/e1.pdf', mimeType: 'application/pdf' });
+
+  it('is drawn as page images, with no dpi warning (it is not a scan)', async () => {
+    const renderer = fakeRenderer();
+    const { reading } = await service({ file: textPdf, renderer, expense: pdfExpense(), words: new FakeWords([]) });
+    const result = await reading.getFieldBoxes('org', 'e1', actor);
+    expect(result.pages).toEqual([{ index: 0, width: 300, height: 400 }]);
+    expect(result.lowResolutionDpi).toBeUndefined();
+    expect(renderer.calls).toBe(1);
+  });
+
+  it("takes the boxes from the PDF's own words, not from OCR of the drawn page", async () => {
+    const ocr = new FakeWords([word('4521', 0.25, 0.1)]);
+    const { reading } = await service({ file: textPdf, renderer: fakeRenderer(), expense: pdfExpense(), words: ocr });
+    const result = await reading.getFieldBoxes('org', 'e1', actor);
+    expect(ocr.calls).toEqual([{ languages: 'fas+eng', contentType: 'application/pdf' }]);
+    expect(result.boxes.find((b) => b.field === 'invoiceNumber')).toMatchObject({ x: 0.25, y: 0.1 });
+  });
+
+  it('has no viewer without a renderer, as before', async () => {
+    const { reading } = await service({ file: textPdf, expense: pdfExpense() });
+    expect((await reading.getFieldBoxes('org', 'e1', actor)).pages).toEqual([]);
   });
 });
 
@@ -232,5 +411,78 @@ describe('getReadingChecks', () => {
   it('is off for the classic reader', async () => {
     const { reading } = await service({ reader: 'CLASSIC', expense: lidl() });
     expect(await reading.getReadingChecks('org', 'e1', actor)).toEqual({ enabled: false, lines: [], smallImage: false });
+  });
+});
+
+describe('reading a box from its words', () => {
+  const word2 = (text: string, x: number, y: number, line: number): OcrWord => ({ text, confidence: 0.9, line, box: { x, y, width: 0.05, height: 0.02 } });
+
+  it('orders the words: lines top to bottom, Persian lines right to left', () => {
+    expect(regionText([word2('B', 0.5, 0.1, 0), word2('A', 0.1, 0.1, 0), word2('C', 0.1, 0.3, 1)])).toBe('A B C');
+    expect(regionText([word2('خرمند', 0.1, 0.1, 0), word2('۲۰۱۴', 0.5, 0.1, 0)])).toBe('۲۰۱۴ خرمند');
+  });
+
+  it('finds the amount in printed text', () => {
+    expect(printedAmount('Summe 16,72')).toBe(16.72);
+    expect(printedAmount('Lidl Plus Rabatt -0,40')).toBe(-0.4);
+    expect(printedAmount('۲٬۳۹۰٬۰۰۰٬۰۰۰ ریال')).toBe(2390000000);
+    expect(printedAmount('1.250.000')).toBe(1250000);
+    expect(printedAmount('EUR')).toBeNull();
+  });
+
+  it('finds the date in printed text, day first or year first, Shamsi converted', () => {
+    expect(printedDate('07.11.26 14:32')).toBe('2026-11-07');
+    expect(printedDate('Datum: 2026-11-07')).toBe('2026-11-07');
+    expect(printedDate('تاریخ ۱۴۰۵/۰۷/۲۸')).toBe('2026-10-20');
+    expect(printedDate('Kasse 12')).toBeNull();
+  });
+
+  // The invoice number 4521 and the total 125,000 (Toman) are on the page.
+  const ocrWords = () => new FakeWords([word('Nr.', 0.1, 0.1), word('4521', 0.25, 0.1), word('جمع', 0.1, 0.8), word('125,000', 0.25, 0.8)]);
+
+  it('reads the words the page already has, in the form units, with no model and no new OCR', async () => {
+    const ocr = ocrWords();
+    const { reading, vision, repository } = await service({ words: ocr });
+    await reading.getFieldBoxes('org', 'e1', actor);
+    const modelCallsOnOpen = vision.requests.length;
+    const region = { x: 0.2, y: 0.78, width: 0.2, height: 0.08 };
+    const result = await reading.readBox('org', 'e1', actor, { field: 'totalAmount', page: 0, region });
+    expect(result).toMatchObject({ value: 1250000, read: '125,000' });
+    expect(result.reason).toBeUndefined();
+    expect(ocr.calls).toHaveLength(1);
+    expect(vision.requests).toHaveLength(modelCallsOnOpen);
+    expect(repository.boxes.find((b) => b.source === 'USER')).toMatchObject({ field: 'totalAmount', value: '125,000' });
+  });
+
+  it('reads just the box with word OCR when the page words are not at hand', async () => {
+    // Words of the crop, in the crop's fractions.
+    const ocr = new FakeWords([word('4521', 0.4, 0.4)]);
+    const { reading } = await service({ words: ocr, expense: expense({ boxesLocatedAt: new Date() }) });
+    const result = await reading.readBox('org', 'e1', actor, { field: 'invoiceNumber', page: 0, region: { x: 0.2, y: 0.05, width: 0.3, height: 0.15 } });
+    expect(result.value).toBe('4521');
+    expect(ocr.calls).toEqual([{ languages: 'fas+eng', contentType: 'image/jpeg' }]);
+  });
+
+  it('says why there is no value: nothing printed, handwriting, no word OCR', async () => {
+    const empty = await service({ words: ocrWords() });
+    await empty.reading.getFieldBoxes('org', 'e1', actor);
+    const region = { x: 0.6, y: 0.5, width: 0.2, height: 0.1 };
+    expect((await empty.reading.readBox('org', 'e1', actor, { field: 'totalAmount', page: 0, region })).reason).toBe('empty');
+
+    const ocr = ocrWords();
+    const handwritten = await service({ words: ocr, expense: expense({ rawExtraction: { mode: 'handwritten', data: {} } }) });
+    expect((await handwritten.reading.readBox('org', 'e1', actor, { field: 'totalAmount', page: 0, region })).reason).toBe('handwritten');
+    expect(ocr.calls).toHaveLength(0);
+
+    const none = await service();
+    expect((await none.reading.readBox('org', 'e1', actor, { field: 'totalAmount', page: 0, region })).reason).toBe('unavailable');
+  });
+
+  it('refuses line items and locked documents', async () => {
+    const region = { x: 0.2, y: 0.05, width: 0.3, height: 0.15 };
+    const { reading } = await service({ words: ocrWords() });
+    await expect(reading.readBox('org', 'e1', actor, { field: 'items.0', page: 0, region })).rejects.toThrow('cannot be read');
+    const sent = await service({ words: ocrWords(), expense: expense({ status: 'SENT' }) });
+    await expect(sent.reading.readBox('org', 'e1', actor, { field: 'totalAmount', page: 0, region })).rejects.toThrow('no longer be edited');
   });
 });
