@@ -371,6 +371,7 @@ const tr: Translations = {
     templateUpdated: '{vendor} şablonu bu faturayla güncellendi.',
     boxesFromTemplate: 'Kutular {vendor} şablonundan. Yerinde olmayanları taşıyın.',
     boxesFromSharedTemplate: 'Kutular {vendor} için paylaşılan bir şablondan (uygulamanın diğer kullanıcılarından; yalnızca yerleşim). Yerinde olmayanları taşıyın.',
+    boxesFromSameForm: 'Kutular aynı görünen bir formun şablonundan ({vendor}); satıcı adından değil, formun kendisinden bulundu. Yerinde olmayanları taşıyın.',
     issueTemplateFill: 'şablonun kutusunda {value} var ama alan boş',
     issueTemplateDiffers: 'şablonun kutusunda {value} var, okunan değer değil',
     issueTemplateEmpty: 'şablon burada bir değer bekliyor ama hiçbiri okunmadı',

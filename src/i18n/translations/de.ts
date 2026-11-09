@@ -371,6 +371,7 @@ const de: Translations = {
     templateUpdated: 'Vorlage für {vendor} mit dieser Rechnung aktualisiert.',
     boxesFromTemplate: 'Rahmen aus der Vorlage für {vendor}. Verschieben Sie, was nicht passt.',
     boxesFromSharedTemplate: 'Rahmen aus einer geteilten Vorlage für {vendor} (von anderen Nutzern der App; nur das Layout). Verschieben Sie, was nicht passt.',
+    boxesFromSameForm: 'Rahmen aus der Vorlage eines gleich aussehenden Formulars ({vendor}), erkannt am Formular, nicht am Lieferantennamen. Verschieben Sie, was nicht passt.',
     issueTemplateFill: 'im Rahmen der Vorlage steht {value}, das Feld ist aber leer',
     issueTemplateDiffers: 'im Rahmen der Vorlage steht {value}, nicht der gelesene Wert',
     issueTemplateEmpty: 'die Vorlage erwartet hier einen Wert, gelesen wurde keiner',

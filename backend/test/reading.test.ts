@@ -10,6 +10,8 @@ import { LocatedBox, toBoxes } from '../src/reading/vision-fields';
 import { FileStorage } from '../src/expenses/ports';
 import type { OcrWord, PdfRenderer, PositionedOcrClient } from '@yazdan-learning/ai';
 import { FakeLlm } from './fakes';
+import { EMPTY_GUIDE } from '../src/reading/form-guide';
+import { fixedWordsOf, pageLook } from '../src/reading/template-match';
 
 const actor = { userId: 'u1', role: 'ACCOUNTANT' as const };
 
@@ -41,6 +43,7 @@ class MemoryRepository implements ReadingRepository {
   boxes: StoredBox[] = [];
   located = 0;
   templateId: string | null = null;
+  templateMatch: string | null = null;
   shareTemplates = true;
   constructor(private readonly invoiceReader = 'TEMPLATE') {}
   async getReadingSettings() {
@@ -49,9 +52,14 @@ class MemoryRepository implements ReadingRepository {
   async listBoxes() {
     return this.boxes;
   }
-  async saveModelBoxes(_id: string, boxes: (LocatedBox & { source?: 'MODEL' | 'TEMPLATE'; value?: string | null })[], templateId: string | null = null) {
+  async saveModelBoxes(
+    _id: string,
+    boxes: (LocatedBox & { source?: 'MODEL' | 'TEMPLATE'; value?: string | null })[],
+    template: { id: string; by: 'vendor' | 'words' | 'look' } | null = null
+  ) {
     this.located++;
-    this.templateId = templateId;
+    this.templateId = template?.id ?? null;
+    this.templateMatch = template?.by ?? null;
     this.boxes = [
       ...this.boxes.filter((b) => b.source === 'USER'),
       ...boxes.map(({ source = 'MODEL', value = null, ...b }) => ({ ...b, source, value }))
@@ -78,16 +86,21 @@ class MemoryRepository implements ReadingRepository {
 class MemoryTemplates implements TemplatesRepository {
   templates: StoredTemplate[] = [];
   uses: { id: string; corrected: boolean }[] = [];
-  async findCandidates(organizationId: string, { taxId, key }: { taxId: string | null; key: string | null }) {
+  async findCandidates(organizationId: string, { taxIds, keys }: { taxIds: string[]; keys: string[] }) {
     return this.templates.filter(
-      (t) => ((taxId && t.vendorTaxId === taxId) || (key && t.vendorKey === key)) && (t.organizationId === organizationId || t.shared)
+      (t) =>
+        ((t.vendorTaxId !== null && taxIds.includes(t.vendorTaxId)) || (t.vendorKey !== null && keys.includes(t.vendorKey))) &&
+        (t.organizationId === organizationId || t.shared)
     );
+  }
+  async findByShape(organizationId: string, aspect: number) {
+    return this.templates.filter((t) => Math.abs((t.pageAspects[0] ?? 0) - aspect) <= aspect * 0.12 && (t.organizationId === organizationId || t.shared));
   }
   async findById(id: string) {
     return this.templates.find((t) => t.id === id) ?? null;
   }
   async create(template: NewTemplate) {
-    const stored = { ...template, id: `t${this.templates.length + 1}`, timesSent: 0, timesCorrected: 0, updatedAt: new Date() };
+    const stored = { ...template, guide: template.guide ?? EMPTY_GUIDE, id: `t${this.templates.length + 1}`, timesSent: 0, timesCorrected: 0, updatedAt: new Date() };
     this.templates.push(stored);
     return stored;
   }
@@ -120,6 +133,11 @@ const template = (overrides: Partial<StoredTemplate> = {}): StoredTemplate => ({
   timesSent: 3,
   timesCorrected: 0,
   updatedAt: new Date('2026-11-01'),
+  words: [],
+  samples: 1,
+  look: null,
+  chosen: {},
+  guide: EMPTY_GUIDE,
   ...overrides
 });
 
@@ -413,12 +431,14 @@ describe('field boxes from word positions', () => {
     expect(vision.requests[0].prompt).toContain('invoiceNumber');
   });
 
-  it('skips the word OCR for handwriting, which it cannot read', async () => {
+  it("reads a handwritten invoice's words only to find its form: they place no box (the printed labels aren't the values)", async () => {
     const ocr = words();
     const { reading, vision } = await service({ words: ocr, expense: expense({ rawExtraction: { mode: 'handwritten', data: { invoiceNumber: '4521' } } }) });
-    await reading.getFieldBoxes('org', 'e1', actor);
-    expect(ocr.calls).toHaveLength(0);
+    const result = await reading.getFieldBoxes('org', 'e1', actor);
+    expect(ocr.calls).toHaveLength(1);
     expect(vision.requests).toHaveLength(1);
+    expect(result.boxes.every((b) => b.source === 'MODEL')).toBe(true);
+    expect(result.templateValues).toBeUndefined();
   });
 
   it('reads a foreign receipt in an Iranian organization with the international languages', async () => {
@@ -582,7 +602,7 @@ describe('invoice templates', () => {
     expect(vision.requests).toHaveLength(0);
     expect(result.boxes.filter((b) => b.source === 'TEMPLATE').map((b) => b.field).sort()).toEqual(['invoiceDate', 'invoiceNumber', 'items.0', 'totalAmount', 'vendorName']);
     expect(result.boxes.find((b) => b.field === 'items.0')).toMatchObject({ x: 0.05, y: 0.3, height: 0.05 });
-    expect(result.template).toEqual({ vendorName: 'فروشگاه نمونه', shared: false, timesSent: 3 });
+    expect(result.template).toEqual({ vendorName: 'فروشگاه نمونه', shared: false, timesSent: 3, matchedBy: 'vendor' });
     expect(repository.templateId).toBe('tpl');
   });
 
@@ -686,10 +706,24 @@ describe('invoice templates', () => {
     templates.templates.push(template());
     const { reading, repository } = await service({ templates, expense: fromVendor({ templateId: 'tpl' }) });
     repository.boxes = Object.entries(template().fields).map(([field, box]) => ({ field, ...box, source: 'TEMPLATE' as const, value: null }));
-    repository.boxes.push({ field: 'invoiceNumber', page: 0, x: 0.12, y: 0.1, width: 0.1, height: 0.04, source: 'USER', value: null });
+    repository.boxes.push({ field: 'invoiceNumber', page: 0, x: 0.3, y: 0.1, width: 0.1, height: 0.04, source: 'USER', value: null });
     await reading.learnTemplate('org', 'e1', actor);
-    expect(templates.templates[0].fields.invoiceNumber.x).toBe(0.12);
+    expect(templates.templates[0].fields.invoiceNumber.x).toBe(0.3);
     expect(templates.uses).toEqual([{ id: 'tpl', corrected: true }]);
+  });
+
+  it("doesn't count a box drawn where the template's was (to fill the field), or for a field the template lacked", async () => {
+    const templates = new MemoryTemplates();
+    templates.templates.push(template());
+    const { reading, repository } = await service({ templates, expense: fromVendor({ templateId: 'tpl' }) });
+    repository.boxes = Object.entries(template().fields).map(([field, box]) => ({ field, ...box, source: 'TEMPLATE' as const, value: null }));
+    repository.boxes.push(
+      { field: 'invoiceNumber', page: 0, x: 0.105, y: 0.102, width: 0.1, height: 0.04, source: 'USER', value: '4521' },
+      { field: 'vendorAddress', page: 0, x: 0.4, y: 0.09, width: 0.2, height: 0.04, source: 'USER', value: 'تهران' }
+    );
+    await reading.learnTemplate('org', 'e1', actor);
+    expect(templates.uses).toEqual([{ id: 'tpl', corrected: false }]);
+    expect(templates.templates[0].fields.vendorAddress).toBeDefined();
   });
 
   it('forgets a field whose template box the user removed, and counts that as a correction', async () => {
@@ -727,5 +761,172 @@ describe('invoice templates', () => {
     nameless.repository.boxes = [{ field: 'totalAmount', page: 0, x: 0.2, y: 0.8, width: 0.2, height: 0.04, source: 'MODEL', value: null }];
     expect(await nameless.reading.learnTemplate('org', 'e1', actor)).toBeNull();
     expect(classic.templates.templates.length + empty.templates.templates.length + nameless.templates.templates.length).toBe(0);
+  });
+
+  it("uses the template the upload's reading was guided by, unless that reading fell back", async () => {
+    const templates = new MemoryTemplates();
+    templates.templates.push(template({ id: 'guided', vendorTaxId: null, vendorKey: 'دیگر' }));
+    const guided = (outcome: string) => expense({ rawExtraction: { ...expense().rawExtraction as object, template: { match: { id: 'guided', by: 'words', outcome } } } });
+    const used = await service({ templates, expense: guided('used') });
+    expect((await used.reading.getFieldBoxes('org', 'e1', actor)).template).toMatchObject({ matchedBy: 'words' });
+    const fell = await service({ templates, expense: guided('fell-back') });
+    expect((await fell.reading.getFieldBoxes('org', 'e1', actor)).template).toBeUndefined();
+  });
+
+  describe('found by the form (step 2)', () => {
+    // A form's printed labels; the reading misread the vendor's name, so the vendor finds no template.
+    const LABELS: [string, number, number][] = [
+      ['فاکتور', 0.45, 0.02],
+      ['فروشنده', 0.8, 0.12],
+      ['خریدار', 0.8, 0.2],
+      ['نشانی', 0.4, 0.12],
+      ['تلفن', 0.25, 0.16],
+      ['ردیف', 0.85, 0.25],
+      ['شرح', 0.6, 0.25],
+      ['تعداد', 0.4, 0.25],
+      ['مبلغ', 0.1, 0.25],
+      ['امضاء', 0.7, 0.9]
+    ];
+    const labels = (dx = 0, dy = 0) => LABELS.map(([t, x, y]) => word(t, x + dx, y + dy));
+    const formWords = fixedWordsOf([{ index: 0, width: 400, height: 200, source: 'ocr', text: '', words: labels() }], { fields: {}, items: null });
+    const misread = (overrides: Partial<ReadableExpense> = {}) => expense({ vendorName: 'فرشگاه نمنه', ...overrides });
+    const formTemplate = (overrides: Partial<StoredTemplate> = {}) => template({ vendorTaxId: null, words: formWords, ...overrides });
+
+    it("finds it by the form's printed words and moves its boxes as far as the scan is shifted", async () => {
+      const templates = new MemoryTemplates();
+      templates.templates.push(formTemplate());
+      const { reading, vision, repository } = await service({ templates, words: new FakeWords(labels(0.02, 0.01)), expense: misread() });
+      const result = await reading.getFieldBoxes('org', 'e1', actor);
+      expect(result.template).toMatchObject({ vendorName: 'فروشگاه نمونه', matchedBy: 'words' });
+      expect(repository.templateMatch).toBe('words');
+      expect(vision.requests).toHaveLength(0);
+      const total = result.boxes.find((b) => b.field === 'totalAmount')!;
+      expect(total.x).toBeCloseTo(0.22, 3);
+      expect(total.y).toBeCloseTo(0.81, 3);
+    });
+
+    it('uses none when two forms of different layouts match about as well', async () => {
+      const templates = new MemoryTemplates();
+      const moved = Object.fromEntries(Object.entries(template().fields).map(([f, b]) => [f, { ...b, x: (b.x + 0.4) % 0.8, y: (b.y + 0.3) % 0.8 }]));
+      templates.templates.push(formTemplate({ id: 'a' }), formTemplate({ id: 'b', vendorKey: 'دیگر', fields: moved }));
+      const { reading, vision } = await service({ templates, words: new FakeWords(labels()), expense: misread() });
+      expect((await reading.getFieldBoxes('org', 'e1', actor)).template).toBeUndefined();
+      expect(vision.requests).toHaveLength(1);
+    });
+
+    it("takes either of several vendors' templates of the same printed form (they place the boxes alike)", async () => {
+      const templates = new MemoryTemplates();
+      templates.templates.push(formTemplate({ id: 'a' }), formTemplate({ id: 'b', vendorKey: 'دیگر', vendorName: 'دیگر' }));
+      const { reading } = await service({ templates, words: new FakeWords(labels()), expense: misread() });
+      expect((await reading.getFieldBoxes('org', 'e1', actor)).template?.matchedBy).toBe('words');
+    });
+
+    it('skips a template whose boxes had to be moved on most invoices', async () => {
+      const templates = new MemoryTemplates();
+      templates.templates.push(formTemplate({ timesSent: 4, timesCorrected: 3 }));
+      const { reading } = await service({ templates, words: new FakeWords(labels()), expense: misread() });
+      expect((await reading.getFieldBoxes('org', 'e1', actor)).template).toBeUndefined();
+    });
+
+    it("doesn't use the vendor's template when its printed words are missing from a page full of others (another of its forms)", async () => {
+      const templates = new MemoryTemplates();
+      templates.templates.push(formTemplate());
+      const others = Array.from({ length: 35 }, (_, i) => word(`کلمه${String.fromCharCode(0x0627 + (i % 20))}${'ب'.repeat(1 + Math.floor(i / 20))}`, (i % 7) / 8, Math.floor(i / 7) / 6));
+      const { reading } = await service({ templates, words: new FakeWords(others), expense: expense({ vendorTaxId: '411111111111' }) });
+      expect((await reading.getFieldBoxes('org', 'e1', actor)).template).toBeUndefined();
+    });
+
+    it('finds a handwritten form by its look when its words can\'t be read', async () => {
+      const form = (dx: number) =>
+        sharp(
+          Buffer.from(
+            `<svg width="400" height="200" xmlns="http://www.w3.org/2000/svg"><rect width="400" height="200" fill="#fff"/><g transform="translate(${dx},0)" stroke="#000" stroke-width="2" fill="none"><rect x="20" y="20" width="360" height="160"/>${[50, 70, 90, 110, 130].map((y) => `<line x1="20" y1="${y}" x2="380" y2="${y}"/>`).join('')}${[80, 200, 300].map((x) => `<line x1="${x}" y1="50" x2="${x}" y2="180"/>`).join('')}</g></svg>`
+          )
+        )
+          .jpeg()
+          .toBuffer();
+      const templates = new MemoryTemplates();
+      templates.templates.push(formTemplate({ words: [], look: await pageLook(await form(0)) }));
+      const { reading, vision } = await service({
+        templates,
+        file: await form(4),
+        expense: misread({ rawExtraction: { mode: 'handwritten', data: { invoiceNumber: '4521', totalAmount: 125000 } } })
+      });
+      const result = await reading.getFieldBoxes('org', 'e1', actor);
+      expect(result.template?.matchedBy).toBe('look');
+      expect(vision.requests).toHaveLength(0);
+    });
+
+    it('counts a value the user chose from a box over what was read, and forgets the rule when they type another', async () => {
+      const templates = new MemoryTemplates();
+      templates.templates.push(template({ vendorTaxId: '411111111111' }));
+      const chosen = (invoiceNumber: string, box: boolean) =>
+        service({ templates, expense: fromVendor({ invoiceNumber, initialReading: { invoiceNumber: 'TC4456' } }) }).then(async ({ reading, repository }) => {
+          repository.boxes = box ? [{ field: 'invoiceNumber', page: 0, x: 0.1, y: 0.1, width: 0.1, height: 0.04, source: 'USER', value: 'F-LO-005' }] : [];
+          if (!box) repository.boxes = [{ field: 'totalAmount', page: 0, x: 0.2, y: 0.8, width: 0.2, height: 0.04, source: 'MODEL', value: null }];
+          await reading.learnTemplate('org', 'e1', actor);
+          return templates.templates[0].chosen;
+        });
+      expect(await chosen('F-LO-005', true)).toEqual({ invoiceNumber: { times: 1, label: null } });
+      expect(await chosen('F-LO-005', true)).toEqual({ invoiceNumber: { times: 2, label: null } });
+      expect(await chosen('SF9903', false)).toEqual({});
+    });
+
+    it('counts an amount the user picked from a box, with its printed label', async () => {
+      const templates = new MemoryTemplates();
+      const { reading, repository } = await service({
+        templates,
+        expense: fromVendor({
+          totalAmount: 45000000,
+          initialReading: { totalAmount: 90000000 },
+          items: [{ description: 'هزینه پایه', totalPrice: 45000000 }],
+          rawExtraction: { data: {}, ocrText: 'هزینه پایه (ریال) : ۴۵,۰۰۰,۰۰۰\nهزینه کل (ریال) : ۴۵,۰۰۰,۰۰۰' }
+        })
+      });
+      repository.boxes = [{ field: 'totalAmount', page: 0, x: 0.2, y: 0.5, width: 0.2, height: 0.03, source: 'USER', value: '۴۵,۰۰۰,۰۰۰' }];
+      await reading.learnTemplate('org', 'e1', actor);
+      expect(templates.templates[0].chosen).toEqual({ totalAmount: { times: 1, label: 'هزینه کل (ریال)' } });
+    });
+
+    it("learns the form's printed words (not the values) and look with the boxes", async () => {
+      const values = [word('4521', 0.1, 0.1)];
+      const { reading, repository, templates } = await service({ words: new FakeWords([...labels(), ...values]), expense: fromVendor() });
+      repository.boxes = [
+        { field: 'invoiceNumber', page: 0, x: 0.1, y: 0.1, width: 0.1, height: 0.04, source: 'MODEL', value: null },
+        { field: 'totalAmount', page: 0, x: 0.2, y: 0.8, width: 0.2, height: 0.04, source: 'MODEL', value: null }
+      ];
+      await reading.learnTemplate('org', 'e1', actor);
+      const [learned] = templates.templates;
+      expect(learned.words.map((w) => w.text).sort()).toEqual(formWords.map((w) => w.text).sort());
+      expect(learned.samples).toBe(1);
+      expect(learned.look?.grid.length).toBeGreaterThan(0);
+    });
+
+    it('counts the words seen again on the next invoice, in its place', async () => {
+      const templates = new MemoryTemplates();
+      templates.templates.push(formTemplate({ vendorTaxId: '411111111111' }));
+      const { reading, repository } = await service({ templates, words: new FakeWords(labels(0.02, 0)), expense: fromVendor() });
+      repository.boxes = [{ field: 'invoiceNumber', page: 0, x: 0.12, y: 0.1, width: 0.1, height: 0.04, source: 'USER', value: null }];
+      await reading.learnTemplate('org', 'e1', actor);
+      const [t] = templates.templates;
+      expect(t.samples).toBe(2);
+      expect(t.words.every((w) => w.seen === 2)).toBe(true);
+      // The fields this invoice had no box for moved with the scan.
+      expect(t.fields.totalAmount.x).toBeCloseTo(0.22, 3);
+    });
+
+    it('keeps a trusted template when an invoice of the vendor has its boxes nearly all elsewhere: another form, a new template', async () => {
+      const templates = new MemoryTemplates();
+      templates.templates.push(template());
+      const { reading, repository } = await service({ templates, expense: fromVendor({ templateId: 'tpl' }) });
+      repository.boxes = [
+        { field: 'vendorName', page: 0, x: 0.1, y: 0.5, width: 0.3, height: 0.05, source: 'USER', value: null },
+        { field: 'invoiceNumber', page: 0, x: 0.5, y: 0.5, width: 0.1, height: 0.04, source: 'USER', value: null },
+        { field: 'totalAmount', page: 0, x: 0.7, y: 0.3, width: 0.2, height: 0.04, source: 'USER', value: null }
+      ];
+      expect(await reading.learnTemplate('org', 'e1', actor)).toMatchObject({ created: true });
+      expect(templates.templates).toHaveLength(2);
+      expect(templates.templates[0].fields.vendorName.y).toBe(0.02);
+    });
   });
 });

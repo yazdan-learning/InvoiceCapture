@@ -236,6 +236,8 @@ model Expense {
   // opened it (template-guided reader); on send, it learns from this invoice.
   templateId String?
   template   InvoiceTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  // How that template was found: 'vendor' (tax ID or name), 'words' (the form's printed words), 'look' (the page's layout).
+  templateMatch String?
   // Fields whose box the user removed on this invoice ("Remove"): on send they are dropped from its
   // vendor's template too. Drawing a box for the field again takes it off this list.
   removedBoxFields String[] @default([])
@@ -413,6 +415,20 @@ model InvoiceTemplate {
   fields      Json
   // The line-items table: { page, x, y, width, height, rowHeight } (rows from its top), or null.
   items       Json?
+  // The first page's height ÷ width, for finding templates by the form (printed words, page look).
+  firstPageAspect Float?
+  // The form's fixed printed words (labels, form code, phone): [{ text, page, x, y, seen }], word centres in
+  // page fractions; seen = in how many of the `samples` invoices learned from. Found and aligned by them.
+  words   Json @default("[]")
+  samples Int  @default(1)
+  // The first page's layout fingerprint: a coarse darkness grid and row/column profiles (not a readable image).
+  look    Json?
+  // { [field]: n }: on n sent invoices the user changed the field from what was read to the value in its box
+  // here. From RULE_AFTER on, that box is the rule for the field (counts only, never the values).
+  chosen  Json @default("{}")
+  // The form guide (form-guide.ts), learned from every sent invoice's OCR text: the printed label before each
+  // confirmed value, what the total is the sum of, whether the form has line items. Labels and counts only.
+  guide   Json @default("{}")
 
   // Trust: invoices sent with it, and how many of those needed its boxes moved.
   timesSent      Int @default(0)
@@ -424,4 +440,5 @@ model InvoiceTemplate {
 
   @@index([vendorTaxId])
   @@index([vendorKey])
+  @@index([firstPageAspect])
 }

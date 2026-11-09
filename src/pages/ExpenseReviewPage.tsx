@@ -25,7 +25,7 @@ import { Category, Expense } from '../types';
 import { BoxTone, DocumentViewer } from '../components/DocumentViewer';
 import { IconPickRegion } from '../components/icons';
 import { StatusPill } from '../components/StatusPill';
-import { TemplateNote } from '../components/TemplateNote';
+import { useTemplateNoteText } from '../components/TemplateNote';
 import { LocationAutocompleteInput } from '../components/LocationAutocompleteInput';
 import { RouteMap } from '../components/RouteMap';
 import { Select } from '../components/Select';
@@ -244,6 +244,7 @@ export function ExpenseReviewPage() {
   const isDesktop = useIsDesktop();
   const uploadState = location.state as { justUploaded?: boolean; fileParts?: string[] } | null;
   const justUploaded = Boolean(uploadState?.justUploaded);
+  const templateNoteText = useTemplateNoteText();
   const fileParts = uploadState?.fileParts ?? [];
 
   const [expense, setExpense] = useState<Expense | null>(null);
@@ -1225,6 +1226,82 @@ export function ExpenseReviewPage() {
         ].join(' ')
       : '';
 
+  /**
+   * Every notice about this document, in order of importance: errors, then warnings,
+   * then what happened (sent, approved…), then information. With the document beside
+   * the form they are small pills on the header line, else full-width banners.
+   */
+  const notices: { key: string; tone: 'error' | 'warning' | 'success' | 'info'; text: string; content?: ReactNode }[] = [];
+  if (error) notices.push({ key: 'error', tone: 'error', text: error });
+  if (expense.status === 'FAILED') {
+    notices.push({
+      key: 'failed',
+      tone: 'error',
+      text: `${t('review.extractionFailed')}${expense.errorMessage ? `: ${expense.errorMessage}` : '.'} ${t('review.extractionFailedManualHint')}`
+    });
+  }
+  if (expense.status === 'REJECTED' && lastDecision) {
+    notices.push({ key: 'rejected', tone: 'error', text: t('review.rejectedBy', { name: lastDecision.approver.name, comment: lastDecision.comment ?? '' }) });
+  }
+  if (expense.status !== 'SENT' && expense.accountingError && !error) {
+    notices.push({ key: 'sendFailed', tone: 'warning', text: t('invoices.lastSendFailed', { error: expense.accountingError }) });
+  }
+  if (expense.isDuplicate) notices.push({ key: 'duplicate', tone: 'warning', text: t('review.duplicateNotice') });
+  if (readingWarningText) notices.push({ key: 'reading', tone: 'warning', text: `⚠ ${readingWarningText}` });
+  if (expense.status === 'SENT') {
+    notices.push({
+      key: 'sent',
+      tone: 'success',
+      text: `${t('invoices.sentOn', { date: formatDateTime(expense.sentToAccountingAt) })}${
+        expense.accountingRef ? t('invoices.sentReference', { reference: expense.accountingRef }) : ''
+      }.`
+    });
+  }
+  if (expense.status === 'APPROVED' && lastDecision) {
+    notices.push({
+      key: 'approved',
+      tone: 'success',
+      text: `${t('review.approvedBy', { name: lastDecision.approver.name })}${
+        lastDecision.decidedAt ? t('review.approvedOnDate', { date: formatDateTime(lastDecision.decidedAt) }) : ''
+      }${lastDecision.comment ? t('review.approvedCommentQuote', { comment: lastDecision.comment }) : ''}.`
+    });
+  }
+  if (templateNoteText) notices.push({ key: 'template', tone: 'success', text: templateNoteText });
+  if (expense.status === 'SUBMITTED') {
+    notices.push({
+      key: 'submitted',
+      tone: 'info',
+      text: isMyApproval
+        ? t('review.submittedForYou', { name: expense.uploader.name })
+        : `${t('review.submitted')}${pendingApproval ? t('review.waitingOnApproval', { name: pendingApproval.approver.name }) : ''}.`
+    });
+  }
+  if (fileParts.length > 1 && fileParts.includes(expense.id)) {
+    notices.push({
+      key: 'split',
+      tone: 'info',
+      text: t('review.splitNotice', { count: String(fileParts.length) }),
+      content: (
+        <>
+          {t('review.splitNotice', { count: String(fileParts.length) })}{' '}
+          {fileParts.map((partId, index) =>
+            partId === expense.id ? (
+              <strong key={partId}>{index + 1} </strong>
+            ) : (
+              <Link key={partId} to={`${listPath}/${partId}`} state={uploadState}>
+                {index + 1}{' '}
+              </Link>
+            )
+          )}
+        </>
+      )
+    });
+  }
+  // Just uploaded and nothing to warn about: the fields were read automatically.
+  if (justUploaded && expense.status === 'EXTRACTED' && !readingWarningText) {
+    notices.push({ key: 'auto', tone: 'info', text: `ⓘ ${t('review.autoExtractedNotice')}` });
+  }
+
   return (
     <div className="review-page">
       {/* With the document: one compact line (back, vendor and facts, status), so the form starts higher. */}
@@ -1240,137 +1317,24 @@ export function ExpenseReviewPage() {
               {form.invoiceNumber.trim() && <span dir="auto">#{form.invoiceNumber.trim()}</span>}
               {expense.items.length > 0 && <span>{t('review.lineCount', { count: String(expense.items.length) })}</span>}
             </span>
-            {/* The reading's warnings (handwritten, several invoices…), small, on the same line; the whole text on hover. */}
-            {readingWarningText ? (
-              <span className="review-title-warning" title={readingWarningText} role="note">
-                ⚠ {readingWarningText}
+            {/* Every notice, small, on the same line; the whole text on hover (wraps on a phone). */}
+            {notices.map((n) => (
+              <span key={n.key} className={`review-title-warning review-title-warning--${n.tone}`} title={n.text} role="note">
+                {n.content ?? n.text}
               </span>
-            ) : (
-              // Just uploaded, nothing to warn about: the same small note says the fields were read automatically.
-              justUploaded &&
-              expense.status === 'EXTRACTED' && (
-                <span className="review-title-warning review-title-warning--info" title={t('review.autoExtractedNotice')} role="note">
-                  ⓘ {t('review.autoExtractedNotice')}
-                </span>
-              )
-            )}
+            ))}
           </div>
         )}
         <StatusPill status={expense.status} />
       </div>
 
-      <TemplateNote />
-
-      {justUploaded && expense.status === 'EXTRACTED' && !showViewer && (
-        <div className="alert alert-info">
-          <span>{t('review.autoExtractedNotice')}</span>
-        </div>
-      )}
-
-      {fileParts.length > 1 && fileParts.includes(expense.id) && (
-        <div className="alert alert-info">
-          <span>
-            {t('review.splitNotice', { count: String(fileParts.length) })}{' '}
-            {fileParts.map((partId, index) =>
-              partId === expense.id ? (
-                <strong key={partId}>{index + 1} </strong>
-              ) : (
-                <Link key={partId} to={`${listPath}/${partId}`} state={uploadState}>
-                  {index + 1}{' '}
-                </Link>
-              )
-            )}
-          </span>
-        </div>
-      )}
-
-      {expense.isDuplicate && (
-        <div className="alert alert-warning">
-          <span>{t('review.duplicateNotice')}</span>
-        </div>
-      )}
-
-      {expense.status === 'EXTRACTED' && expense.errorMessage && !showViewer && (
-        <div className="alert alert-warning">
-          {readingWarnings(expense.errorMessage).map(({ key, count }) => (
-            <span key={key}>{t(key, count ? { count } : undefined)} </span>
-          ))}
-          {handwrittenCheck && (
-            <span>
-              {t('review.handwrittenCheck')}
-              {handwrittenCheck.length > 0 && (
-                <>
-                  {' '}
-                  <strong>
-                    {t('review.checkEspecially')} {handwrittenCheck.map((f) => (FIELD_LABELS[f] ? t(FIELD_LABELS[f]) : f)).join(', ')}
-                  </strong>
-                </>
-              )}
-            </span>
-          )}
-        </div>
-      )}
-
-      {expense.status === 'FAILED' && (
-        <div className="alert alert-error">
-          <span>
-            {t('review.extractionFailed')}
-            {expense.errorMessage ? `: ${expense.errorMessage}` : '.'} {t('review.extractionFailedManualHint')}
-          </span>
-        </div>
-      )}
-
-      {expense.status === 'SUBMITTED' && !isMyApproval && (
-        <div className="alert alert-info">
-          <span>
-            {t('review.submitted')}
-            {pendingApproval ? t('review.waitingOnApproval', { name: pendingApproval.approver.name }) : ''}.
-          </span>
-        </div>
-      )}
-
-      {expense.status === 'SUBMITTED' && isMyApproval && (
-        <div className="alert alert-info">
-          <span>{t('review.submittedForYou', { name: expense.uploader.name })}</span>
-        </div>
-      )}
-
-      {expense.status === 'APPROVED' && lastDecision && (
-        <div className="alert alert-success">
-          <span>
-            {t('review.approvedBy', { name: lastDecision.approver.name })}
-            {lastDecision.decidedAt ? t('review.approvedOnDate', { date: formatDateTime(lastDecision.decidedAt) }) : ''}
-            {lastDecision.comment ? t('review.approvedCommentQuote', { comment: lastDecision.comment }) : ''}.
-          </span>
-        </div>
-      )}
-
-      {expense.status === 'REJECTED' && lastDecision && (
-        <div className="alert alert-error">
-          <span>{t('review.rejectedBy', { name: lastDecision.approver.name, comment: lastDecision.comment ?? '' })}</span>
-        </div>
-      )}
-
-      {expense.status === 'SENT' && (
-        <div className="alert alert-success">
-          <span>
-            {t('invoices.sentOn', { date: formatDateTime(expense.sentToAccountingAt) })}
-            {expense.accountingRef ? t('invoices.sentReference', { reference: expense.accountingRef }) : ''}.
-          </span>
-        </div>
-      )}
-
-      {expense.status !== 'SENT' && expense.accountingError && !error && (
-        <div className="alert alert-warning">
-          <span>{t('invoices.lastSendFailed', { error: expense.accountingError })}</span>
-        </div>
-      )}
-
-      {error && (
-        <div className="alert alert-error">
-          <span>{error}</span>
-        </div>
-      )}
+      {/* Without the document beside the form: the same notices as full-width banners. */}
+      {!showViewer &&
+        notices.map((n) => (
+          <div key={n.key} className={`alert alert-${n.tone}`} role="status">
+            <span>{n.content ?? n.text}</span>
+          </div>
+        ))}
 
       {isMileage ? (
         <div className="detail-layout">
@@ -1520,9 +1484,16 @@ export function ExpenseReviewPage() {
                 <>
                   {fieldBoxes.template && (
                     <p className="viewer-note viewer-note--template">
-                      {t(fieldBoxes.template.shared ? 'review.boxesFromSharedTemplate' : 'review.boxesFromTemplate', {
-                        vendor: fieldBoxes.template.vendorName?.trim() || t('review.untitled')
-                      })}
+                      {t(
+                        fieldBoxes.template.matchedBy !== 'vendor'
+                          ? 'review.boxesFromSameForm'
+                          : fieldBoxes.template.shared
+                            ? 'review.boxesFromSharedTemplate'
+                            : 'review.boxesFromTemplate',
+                        {
+                          vendor: fieldBoxes.template.vendorName?.trim() || t('review.untitled')
+                        }
+                      )}
                     </p>
                   )}
                   {boxError && <p className="viewer-note viewer-note--warning">{t('review.boxSaveFailed')}</p>}

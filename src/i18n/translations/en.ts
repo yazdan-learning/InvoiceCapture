@@ -383,6 +383,7 @@ const en = {
     templateUpdated: 'Template for {vendor} updated with this invoice.',
     boxesFromTemplate: 'Boxes from the template for {vendor}. Move any that are off.',
     boxesFromSharedTemplate: 'Boxes from a shared template for {vendor} (built by other users of the app; layout only). Move any that are off.',
+    boxesFromSameForm: 'Boxes from the template of a form that looks the same ({vendor}), found by the form, not the vendor name. Move any that are off.',
     issueTemplateFill: 'the template\'s box holds {value}, but the field is empty',
     issueTemplateDiffers: 'the template\'s box holds {value}, not what was read',
     issueTemplateEmpty: 'the template expects a value here, but none was read',

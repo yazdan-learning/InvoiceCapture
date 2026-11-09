@@ -1,5 +1,4 @@
 import {
-  enlargeSmallImage,
   lineFlags,
   parsePrintedSavings,
   smallGapCents,
@@ -19,10 +18,44 @@ import { FileStorage } from '../expenses/ports';
 import { Actor } from '../expenses/expenses.service';
 import { BadRequestError, NotFoundError } from '../shared/errors';
 import { isPickableField, itemField, PICKABLE_FIELDS } from './fields';
+import { EMPTY_GUIDE, GUIDE_FIELDS, learnGuide, type FormGuide, type GuideField, type SentInvoice } from './form-guide';
 import { printedAmount, printedDate, regionText, wordsInRegion } from './box-text';
 import { cropForOcr, documentPages, PageImage, Region } from './page-images';
+import {
+  alignTemplate,
+  findTemplate,
+  readPageWords,
+  READABLE_PAGE,
+  TemplateMatch,
+  WORDS_MATCH,
+  WORDS_OTHER_FORM,
+  WORDS_TEMPLATE_MIN
+} from './template-finder';
 import { readingRepository as prismaReadingRepository, ReadingRepository } from './reading.repository';
-import { bestTemplate, fitsPages, layoutFromBoxes, placeFromTemplate, StoredTemplate, taxIdKey, vendorKey } from './templates';
+import {
+  fixedWordsOf,
+  IDENTITY,
+  matchWords,
+  mergeWords,
+  moveLayout,
+  PageLook,
+  pageLook,
+  readableWords
+} from './template-match';
+import {
+  bestTemplate,
+  ChosenField,
+  distrusted,
+  labelBefore,
+  fitsPages,
+  layoutFromBoxes,
+  placeFromTemplate,
+  sameLayout,
+  StoredTemplate,
+  TemplateMatchKind,
+  taxIdKey,
+  vendorKey
+} from './templates';
 import { templatesRepository as prismaTemplatesRepository, TemplatesRepository } from './templates.repository';
 import { showsFieldBoxes } from './registry';
 import { LocatedBox, locateFields, readRegionValue } from './vision-fields';
@@ -91,8 +124,13 @@ export type FieldBoxesResponse = {
   enabled: boolean;
   pages: { index: number; width: number; height: number }[];
   boxes: { field: string; source: 'MODEL' | 'USER' | 'TEMPLATE'; page: number; x: number; y: number; width: number; height: number; value: string | null }[];
-  /** The invoice template whose boxes were used: the vendor's, from this organization or shared by another one. */
-  template?: { vendorName: string | null; shared: boolean; timesSent: number };
+  /**
+   * The invoice template whose boxes were used: the vendor's, from this
+   * organization or shared by another one. matchedBy: found by the vendor, or
+   * by the form itself (its printed words, its look) — then maybe another
+   * vendor's template of the same printed form, so the page asks to check.
+   */
+  template?: { vendorName: string | null; shared: boolean; timesSent: number; matchedBy: TemplateMatchKind };
   /**
    * What each template box of a form field holds, read from the words inside it
    * when the boxes were placed: the value in the form's units (null when nothing
@@ -192,11 +230,133 @@ export function wordTargets(expense: ReadableExpense): WordTargets {
   };
 }
 
+/** The template an invoice's boxes came from, and how it was found. */
+type UsedTemplate = { id: string; by: TemplateMatchKind };
+
 /** What learning from a sent invoice did: its vendor's template created or updated (null: nothing to learn). */
 export type TemplateLearned = { vendorName: string | null; created: boolean } | null;
 
 /** The keys an invoice's template is found by: the vendor's tax ID and name. */
 const templateKeys = (expense: ReadableExpense) => ({ taxId: taxIdKey(expense.vendorTaxId), key: vendorKey(expense.vendorName) });
+const lookup = (keys: { taxId: string | null; key: string | null }) => ({ taxIds: keys.taxId ? [keys.taxId] : [], keys: keys.key ? [keys.key] : [] });
+
+/** A box whose centre moved this far (page fraction) from where the template put it was put right by the user. */
+const MOVED = 0.02;
+
+/**
+ * Whether the user corrected the template's boxes on an invoice: moved one of
+ * them clearly elsewhere, or removed one the template had. Drawing a box where
+ * the template's already was (to fill its field), or for a field the template
+ * didn't have, is no correction.
+ */
+export function correctedTemplate(used: StoredTemplate, boxes: { field: string; source: string; x: number; y: number; width: number; height: number }[], removed: string[]): boolean {
+  if (removed.some((field) => used.fields[field])) return true;
+  const centre = (b: { x: number; y: number; width: number; height: number }) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+  return boxes.some((user) => {
+    if (user.source !== 'USER') return false;
+    const placed = boxes.find((b) => b.source === 'TEMPLATE' && b.field === user.field);
+    if (!placed) return false;
+    const [a, b] = [centre(user), centre(placed)];
+    return Math.abs(a.x - b.x) > MOVED || Math.abs(a.y - b.y) > MOVED;
+  });
+}
+
+/** The fields a chosen-value rule can hold: text read as it is printed, and the amounts the user picked out. */
+const CHOOSABLE = ['invoiceNumber', 'vendorName', 'vendorTaxId', 'vendorAddress', 'totalAmount', 'subtotal', 'taxAmount', 'discountAmount'];
+
+const plain = (value: unknown) => (value === null || value === undefined ? '' : westernDigits(String(value)).toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''));
+const amountOf = (value: unknown) => (value === null || value === undefined || value === '' ? null : Math.round(Number(value) * 100));
+
+/**
+ * The template's chosen fields after a sent invoice: a field the user changed
+ * from what was read to the value in a box they drew counts once more (from one
+ * again when the box is somewhere else than the template's), with the printed
+ * label before that value in the OCR text (not a line item's name); one they
+ * changed without a box loses its rule. Counts and labels only, never the values.
+ */
+export function chosenFields(
+  expense: ReadableExpense,
+  boxes: { field: string; source: string; x: number; y: number; width: number; height: number; value: string | null }[],
+  before: Record<string, ChosenField>,
+  template: { fields: Record<string, { x: number; y: number; width: number; height: number }> } | null
+): Record<string, ChosenField> {
+  const initial = (expense.initialReading ?? {}) as Record<string, unknown>;
+  const ocrText = (expense.rawExtraction as { ocrText?: unknown } | null)?.ocrText;
+  const items = expense.items.map((i) => i.description);
+  const chosen = { ...before };
+  for (const field of CHOOSABLE) {
+    const amount = PICKABLE_FIELDS[field].kind === 'amount';
+    const initialValue = initial[PICKABLE_FIELDS[field].readingKey];
+    const box = boxes.find((b) => b.source === 'USER' && b.field === field);
+    let changed: boolean;
+    let inBox: boolean;
+    if (amount) {
+      const now = amountOf(expense[field] as Amount | undefined);
+      if (now === null || now === amountOf(initialValue)) continue;
+      changed = true;
+      const printed = box?.value ? printedAmount(box.value) : null;
+      inBox = printed !== null && Math.round(printed * 100) === now;
+    } else {
+      const now = plain(expense[field]);
+      if (!now || now === plain(initialValue)) continue;
+      changed = true;
+      inBox = !!box?.value && (plain(box.value).includes(now) || now.includes(plain(box.value)));
+    }
+    if (!changed) continue;
+    if (!box || !inBox) {
+      delete chosen[field];
+      continue;
+    }
+    const was = template?.fields[field];
+    const samePlace = was && Math.abs(was.x + was.width / 2 - (box.x + box.width / 2)) <= MOVED && Math.abs(was.y + was.height / 2 - (box.y + box.height / 2)) <= MOVED;
+    const label = typeof ocrText === 'string' ? labelBefore(ocrText, String(expense[field]), { amount, skip: items }) : null;
+    chosen[field] = samePlace ? { times: (chosen[field]?.times ?? 0) + 1, label: label ?? chosen[field]?.label ?? null } : { times: 1, label };
+  }
+  return chosen;
+}
+
+/** A stored value as the guide compares it: dates as YYYY-MM-DD, amounts as numbers, text as it is. */
+function guideValue(field: GuideField, value: unknown): string | number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const kind = PICKABLE_FIELDS[field].kind;
+  if (kind === 'date') return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+  if (kind === 'amount') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return String(value);
+}
+
+/**
+ * The sent invoice as the form guide learns from it (form-guide.ts): its OCR
+ * text, the values sent and as first read; null without OCR text (handwriting
+ * read from the photo, an old invoice).
+ */
+export function sentInvoice(expense: ReadableExpense, amountFactors: number[]): SentInvoice | null {
+  const ocrText = (expense.rawExtraction as { ocrText?: unknown } | null)?.ocrText;
+  if (typeof ocrText !== 'string' || !ocrText.trim()) return null;
+  const initial = (expense.initialReading ?? {}) as Record<string, unknown>;
+  const values: SentInvoice['values'] = {};
+  const read: SentInvoice['read'] = {};
+  for (const field of GUIDE_FIELDS) {
+    values[field] = guideValue(field, expense[field]);
+    read[field] = guideValue(field, initial[PICKABLE_FIELDS[field].readingKey]);
+  }
+  return { ocrText, values, read, itemNames: expense.items.map((i) => i.description).filter(Boolean), amountFactors };
+}
+
+/** The template's guide after this invoice was sent. */
+function guideAfter(before: FormGuide | undefined, expense: ReadableExpense, amountFactors: number[]): FormGuide | undefined {
+  const sent = sentInvoice(expense, amountFactors);
+  return sent ? learnGuide(before ?? EMPTY_GUIDE, sent) : before;
+}
+
+/** The template the upload's reading was guided by (rawExtraction.template.match), when its reading held: the boxes use it too. */
+function uploadTemplate(expense: ReadableExpense): UsedTemplate | null {
+  const match = (expense.rawExtraction as { template?: { match?: { id?: unknown; by?: unknown; outcome?: unknown } } } | null)?.template?.match;
+  if (!match || typeof match.id !== 'string' || match.outcome === 'fell-back') return null;
+  return { id: match.id, by: (match.by as TemplateMatchKind) ?? 'vendor' };
+}
 const aspectsOf = (pages: PageImage[]) => pages.map((p) => p.height / p.width);
 
 export function createReadingService({
@@ -209,7 +369,7 @@ export function createReadingService({
   templates = prismaTemplatesRepository
 }: Deps) {
   const pageCache = new Map<string, Promise<PageImage[]>>();
-  const locating = new Map<string, Promise<string | null>>();
+  const locating = new Map<string, Promise<UsedTemplate | null>>();
   const wordCache = new Map<string, OcrPage[]>();
 
   function rememberWords(expense: ReadableExpense, read: OcrPage[]) {
@@ -236,52 +396,67 @@ export function createReadingService({
     const ocr = words?.();
     if (!ocr) return null;
     try {
-      // A PDF made from text: its own words, exact, in the same page fractions as the drawn pages.
-      if (pages.length && pages.every((p) => p.rendered) && expense.filePath) {
-        const pdf = await fileStorage.read(expense.filePath);
-        return (await ocr.readWords({ buffer: pdf, filename: 'document.pdf', contentType: 'application/pdf' }, { languages })).pages.slice(0, pages.length);
-      }
-      const read: OcrPage[] = [];
-      for (const [index, page] of pages.entries()) {
-        // The page image itself (not the original file), so the boxes fit what the review page shows; small ones enlarged (boxes are fractions).
-        const file = await enlargeSmallImage({ buffer: page.buffer, filename: `page-${index}.jpg`, contentType: 'image/jpeg' });
-        const [first] = (await ocr.readWords(file, { languages })).pages;
-        read.push(first ?? { index, width: page.width, height: page.height, source: 'ocr', text: '', words: [] });
-      }
-      return read;
+      const pdf = pages.length && pages.every((p) => p.rendered) && expense.filePath ? await fileStorage.read(expense.filePath) : null;
+      return await readPageWords(ocr, pages, pdf, languages);
     } catch (err) {
       console.warn(`field boxes: word OCR failed, using the vision model: ${(err as Error).message}`);
       return null;
     }
   }
 
+  /** The first page's look, once per document (only needed when the words don't tell the form). */
+  const lookCache = new Map<Buffer, Promise<PageLook | null>>();
+  function lookOf(pages: PageImage[]): Promise<PageLook | null> {
+    const page = pages[0];
+    if (!page) return Promise.resolve(null);
+    let look = lookCache.get(page.buffer);
+    if (!look) {
+      look = pageLook(page.buffer).catch(() => null);
+      lookCache.set(page.buffer, look);
+      if (lookCache.size > PAGE_CACHE_SIZE) lookCache.delete(lookCache.keys().next().value!);
+    }
+    return look;
+  }
+
   /**
-   * The vendor's template (step 1: found by the vendor's tax ID or name as read):
-   * this organization's own first, else one another organization shares; only
-   * when the document's pages have the template's shape.
+   * The template for the boxes: the one the upload's reading was guided by
+   * (aligned to this scan), else found by the vendor as read, the form's
+   * printed words or the page's look (template-finder.ts).
    */
-  async function matchTemplate(organizationId: string, expense: ReadableExpense, pages: PageImage[]): Promise<StoredTemplate | null> {
+  async function matchTemplate(organizationId: string, expense: ReadableExpense, pages: PageImage[], read: OcrPage[] | null): Promise<TemplateMatch | null> {
+    const fromUpload = uploadTemplate(expense);
+    const template = fromUpload ? await templates.findById(fromUpload.id) : null;
+    if (fromUpload && template) return { template, by: fromUpload.by, transforms: await alignTemplate(template, read, await lookOf(pages)) };
     const keys = templateKeys(expense);
-    const candidates = (await templates.findCandidates(organizationId, keys)).filter((t) => fitsPages(t, aspectsOf(pages)));
-    return bestTemplate(candidates, organizationId, keys);
+    return findTemplate(templates, {
+      organizationId,
+      aspects: aspectsOf(pages),
+      vendor: lookup(keys),
+      read: keys,
+      words: async () => read,
+      look: () => lookOf(pages)
+    });
   }
 
   /**
    * Boxes from the OCR's word positions first (exact; no model, about a second
-   * a page), then the vendor's template for what the words didn't place. When
-   * together they place less than half of the values — Persian scans and
-   * tables, handwriting (word OCR can't read it), blurry photos, a vendor
-   * without a template — one vision model call places the rest (rougher; the
-   * user moves them). When it fails, the boxes found so far are kept.
+   * a page), then the matching template for what the words didn't place
+   * (aligned to this scan). When together they place less than half of the
+   * values — Persian scans and tables, handwriting (word OCR can't read it),
+   * blurry photos, a form without a template — one vision model call places
+   * the rest (rougher; the user moves them). When it fails, the boxes found so
+   * far are kept. A handwritten invoice's words are read only to find its form.
    */
   async function locateBoxes(organizationId: string, expense: ReadableExpense, pages: PageImage[], languages: string) {
-    const template = await matchTemplate(organizationId, expense, pages).catch((err: Error) => {
+    const read = await pageWords(expense, pages, languages);
+    if (read) rememberWords(expense, read);
+    const handwritten = isHandwritten(expense);
+    const match = await matchTemplate(organizationId, expense, pages, read).catch((err: Error) => {
       console.warn(`field boxes: template lookup failed: ${err.message}`);
       return null;
     });
-    const read = isHandwritten(expense) ? null : await pageWords(expense, pages, languages);
-    if (read) rememberWords(expense, read);
-    const fromWords = read ? locateFromWords(read, wordTargets(expense)) : [];
+    const template = match ? moveLayout(match.template, match.transforms) : null;
+    const fromWords = read && !handwritten ? locateFromWords(read, wordTargets(expense)) : [];
     const { fields, items } = locateTargets(expense);
     const total = fields.length + items.length;
     const placed = new Set(fromWords.map((b) => b.field));
@@ -300,33 +475,34 @@ export function createReadingService({
         console.warn(`field boxes: vision model failed, keeping ${placed.size} boxes: ${(err as Error).message}`);
       }
     }
+    const t = match?.template;
     console.log(
       `field boxes ${expense.id}: ${fromWords.length} of ${total} from words` +
-        (template ? `, ${fromTemplate.length} from the template (${template.vendorName ?? template.id}${template.organizationId === organizationId ? '' : ', shared'})` : '') +
+        (t ? `, ${fromTemplate.length} from the template (${t.vendorName ?? t.id}, by ${match!.by}${t.organizationId === organizationId ? '' : ', shared'})` : '') +
         (needsVision ? `, ${fromVision.length} from the vision model` : ' (vision model not needed)')
     );
     // What each template box holds, from the words inside it (free): compared with the reading on the review page.
-    // Only text the OCR is sure of: garbled Persian on a blurry scan would raise false disagreements.
+    // Only text the OCR is sure of: garbled Persian on a blurry scan would raise false disagreements. Not on handwriting.
     const boxText = (b: LocatedBox) => {
-      if (!read?.[b.page] || !isPickableField(b.field)) return null;
+      if (handwritten || !read?.[b.page] || !isPickableField(b.field)) return null;
       const inside = wordsInRegion(read[b.page], b);
       if (!inside.length || inside.reduce((sum, w) => sum + w.confidence, 0) / inside.length < SURE_WORDS) return null;
       return regionText(inside) || null;
     };
     return {
       boxes: [...fromWords, ...fromTemplate.map((b) => ({ ...b, source: 'TEMPLATE' as const, value: boxText(b) })), ...fromVision],
-      templateId: template && fromTemplate.length ? template.id : null
+      template: match && fromTemplate.length ? { id: match.template.id, by: match.by } : null
     };
   }
 
   /** Once per expense, also when the review page asks twice at the same moment. Resolves to the template it used. */
-  function locateOnce(organizationId: string, expense: ReadableExpense, pages: PageImage[], languages: string): Promise<string | null> {
+  function locateOnce(organizationId: string, expense: ReadableExpense, pages: PageImage[], languages: string): Promise<UsedTemplate | null> {
     let running = locating.get(expense.id);
     if (!running) {
       running = locateBoxes(organizationId, expense, pages, languages)
-        .then(async ({ boxes, templateId }) => {
-          await repository.saveModelBoxes(expense.id, boxes, templateId);
-          return templateId;
+        .then(async ({ boxes, template }) => {
+          await repository.saveModelBoxes(expense.id, boxes, template);
+          return template;
         })
         .finally(() => locating.delete(expense.id));
       locating.set(expense.id, running);
@@ -341,10 +517,10 @@ export function createReadingService({
     return { fields: fields.filter((t) => !boxed.has(t.field)), items: items.filter((t) => !boxed.has(t.field)) };
   }
 
-  async function response(organizationId: string, expense: ReadableExpense, pages: PageImage[], templateId: string | null, error?: string): Promise<FieldBoxesResponse> {
+  async function response(organizationId: string, expense: ReadableExpense, pages: PageImage[], used: UsedTemplate | null, error?: string): Promise<FieldBoxesResponse> {
     const dpi = Math.min(...pages.map((p) => p.dpi ?? Infinity));
     const missing = await missingTargets(expense);
-    const template = templateId ? await templates.findById(templateId) : null;
+    const template = used ? await templates.findById(used.id) : null;
     const boxes = await repository.listBoxes(expense.id);
     const country = getCountryProfile((await repository.getReadingSettings(organizationId)).country);
     const templateValues = boxes
@@ -360,7 +536,9 @@ export function createReadingService({
       boxes,
       ...(templateValues.length ? { templateValues } : {}),
       missing: pages.length ? [...missing.fields, ...missing.items].map((t) => t.field) : [],
-      ...(template ? { template: { vendorName: template.vendorName, shared: template.organizationId !== organizationId, timesSent: template.timesSent } } : {}),
+      ...(template
+        ? { template: { vendorName: template.vendorName, shared: template.organizationId !== organizationId, timesSent: template.timesSent, matchedBy: used!.by } }
+        : {}),
       ...(error ? { error } : {}),
       ...(dpi < LOW_SCAN_DPI ? { lowResolutionDpi: dpi } : {})
     };
@@ -435,22 +613,27 @@ export function createReadingService({
 
       const pages = await pagesOf(expense);
       let error: string | undefined;
-      let templateId = typeof expense.templateId === 'string' ? expense.templateId : null;
+      let used: UsedTemplate | null =
+        typeof expense.templateId === 'string' ? { id: expense.templateId, by: (expense.templateMatch as TemplateMatchKind | null) ?? 'vendor' } : null;
       if (pages.length && !expense.boxesLocatedAt) {
-        templateId = await locateOnce(organizationId, expense, pages, languagesFor(expense, country)).catch((err: Error) => {
+        used = await locateOnce(organizationId, expense, pages, languagesFor(expense, country)).catch((err: Error) => {
           error = err.message || 'Could not locate the fields on the document';
           return null;
         });
       }
-      return response(organizationId, expense, pages, templateId, error);
+      return response(organizationId, expense, pages, used, error);
     },
 
     /**
      * An invoice was sent (or an expense submitted): the user checked it, so its
-     * boxes — found, from a template or drawn — are its vendor's layout. The
-     * organization's template for the vendor is created or updated with them;
-     * the template used to place them (maybe another organization's) counts one
-     * more use, and one more correction when the user had to move a box.
+     * boxes — found, from a template or drawn — are its vendor's layout, and the
+     * printed words outside them (and the page's look) are its form. The
+     * organization's template for the vendor's form is created or updated with
+     * them; the template used to place them (maybe another organization's, or
+     * another vendor's on the same printed form) counts one more use, and one
+     * more correction when the user had to move a box. A trusted template whose
+     * boxes nearly all moved, or whose printed words are missing, is another
+     * form of the vendor: a new template, the old one stays.
      * Template-guided reader only; nothing to learn without boxes or a vendor key.
      */
     async learnTemplate(organizationId: string, id: string, actor: Actor): Promise<TemplateLearned> {
@@ -464,28 +647,75 @@ export function createReadingService({
       const layout = layoutFromBoxes(boxes, aspectsOf(pages));
       if (!layout) return null;
 
+      // The form: printed words outside the boxes (from the words read on open, else read again; free) and the look.
+      const read = wordCache.get(expense.id) ?? (await pageWords(expense, pages, languagesFor(expense, getCountryProfile(settings.country))));
+      const words = read ? fixedWordsOf(read, layout) : [];
+      const look = await lookOf(pages);
+
       const used = typeof expense.templateId === 'string' ? await templates.findById(expense.templateId) : null;
       // Fields the user removed the box of on this invoice (Remove): the template forgets them.
       const removed = (await repository.listRemovedFields(expense.id)).filter((field) => !boxes.some((b) => b.field === field));
-      if (used) await templates.recordUse(used.id, removed.length > 0 || boxes.some((b) => b.source === 'USER'));
+      if (used) await templates.recordUse(used.id, correctedTemplate(used, boxes, removed));
+
+      // The organization's template for this vendor and form: the one used when it is the vendor's, else the vendor's whose words are here.
+      const ofVendor = (t: StoredTemplate) => (keys.taxId !== null && t.vendorTaxId === keys.taxId) || (keys.key !== null && t.vendorKey === keys.key);
+      const candidates =
+        used && used.organizationId === organizationId && ofVendor(used)
+          ? [used]
+          : (await templates.findCandidates(organizationId, lookup(keys))).filter((t) => t.organizationId === organizationId && fitsPages(t, layout.pageAspects));
+      const scored = candidates.map((template) => ({ template, words: read && template.words.length ? matchWords(template.words, read) : null }));
+      const readable = read ? readableWords(read) : 0;
       const own =
-        used?.organizationId === organizationId
-          ? used
-          : bestTemplate((await templates.findCandidates(organizationId, keys)).filter((t) => t.organizationId === organizationId), organizationId, keys);
+        scored.filter((c) => c.words && c.words.score >= WORDS_MATCH).sort((a, b) => b.words!.score - a.words!.score)[0]?.template ??
+        bestTemplate(candidates, organizationId, keys);
       const vendorName = typeof expense.vendorName === 'string' ? expense.vendorName : null;
+      // Amounts as printed: stored ÷ the currency unit's factor (Toman is stored as Rial).
+      const factors = [1, ...getCountryProfile(settings.country).invoice.currencyUnits.map((u) => u.factor).filter((f) => f !== 1)];
+
       if (own) {
-        // This invoice's boxes win; fields it didn't have keep the template's (another invoice may have had a due date),
-        // except the ones the user removed from it.
-        const kept = Object.fromEntries(Object.entries(own.fields).filter(([field]) => !removed.includes(field)));
-        const merged = {
-          fields: { ...kept, ...layout.fields },
-          items: layout.items ?? own.items,
-          pageAspects: layout.pageAspects.length >= own.pageAspects.length ? layout.pageAspects : own.pageAspects
-        };
-        await templates.update(own.id, { ...merged, vendorTaxId: keys.taxId, vendorKey: keys.key, vendorName });
-        return { vendorName: vendorName ?? own.vendorName, created: false };
+        // The template's places on this scan: what it keeps is moved here, so old and new boxes and words agree.
+        const transforms = await alignTemplate(own, read, await lookOf(pages));
+        const moved = moveLayout(own, transforms);
+        const ownWords = scored.find((c) => c.template === own)?.words;
+        const wordsMissing = !!ownWords && own.words.length >= WORDS_TEMPLATE_MIN && readable >= READABLE_PAGE && ownWords.score < WORDS_OTHER_FORM;
+        const trusted = own.timesSent >= 2 && !distrusted(own);
+        const otherForm = wordsMissing || (trusted && !sameLayout(moved, layout) && Object.keys(layout.fields).filter((f) => moved.fields[f]).length >= 3);
+        if (!otherForm) {
+          // This invoice's boxes win; fields it didn't have keep the template's (another invoice may have had a due date),
+          // except the ones the user removed from it.
+          const kept = Object.fromEntries(Object.entries(moved.fields).filter(([field]) => !removed.includes(field)));
+          const merged = mergeWords(own.words, own.samples, words, (w) => {
+            const t = transforms[w.page] ?? IDENTITY;
+            return { ...w, x: t.ax * w.x + t.bx, y: t.ay * w.y + t.by };
+          });
+          await templates.update(own.id, {
+            fields: { ...kept, ...layout.fields },
+            items: layout.items ?? moved.items,
+            pageAspects: layout.pageAspects.length >= own.pageAspects.length ? layout.pageAspects : own.pageAspects,
+            ...merged,
+            look: look ?? own.look,
+            chosen: chosenFields(expense, boxes, own.chosen, moved),
+            guide: guideAfter(own.guide, expense, factors),
+            vendorTaxId: keys.taxId,
+            vendorKey: keys.key,
+            vendorName
+          });
+          return { vendorName: vendorName ?? own.vendorName, created: false };
+        }
       }
-      await templates.create({ ...layout, organizationId, shared: settings.shareTemplates, vendorTaxId: keys.taxId, vendorKey: keys.key, vendorName });
+      await templates.create({
+        ...layout,
+        words,
+        samples: 1,
+        look,
+        chosen: chosenFields(expense, boxes, {}, null),
+        guide: guideAfter(undefined, expense, factors),
+        organizationId,
+        shared: settings.shareTemplates,
+        vendorTaxId: keys.taxId,
+        vendorKey: keys.key,
+        vendorName
+      });
       return { vendorName, created: true };
     },
 

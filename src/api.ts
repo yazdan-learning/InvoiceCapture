@@ -276,8 +276,12 @@ export type FieldBoxes = {
   boxes: FieldBox[];
   /** Fields with a value but no box: the user can draw one. */
   missing: string[];
-  /** The vendor's template that placed the boxes: this organization's, or shared by another one. */
-  template?: { vendorName: string | null; shared: boolean; timesSent: number };
+  /**
+   * The template that placed the boxes: this organization's, or shared by another one. matchedBy: found by
+   * the vendor's tax ID or name, or by the form itself (printed words, page look) — maybe another vendor's
+   * template of the same printed form.
+   */
+  template?: { vendorName: string | null; shared: boolean; timesSent: number; matchedBy: 'vendor' | 'words' | 'look' };
   /** What each template box holds (read from its words), in the form's units; null when nothing printed could be read. */
   templateValues?: { field: string; value: string | number | null; text: string | null }[];
   error?: string;

@@ -1,6 +1,7 @@
 import { FieldBoxSource } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { LocatedBox } from './vision-fields';
+import type { TemplateMatchKind } from './templates';
 
 const BOX_SELECT = { field: true, source: true, page: true, x: true, y: true, width: true, height: true, value: true } as const;
 
@@ -20,11 +21,15 @@ export const readingRepository = {
    * replace earlier ones, and the expense is marked as located (also with none
    * found), with the template it used.
    */
-  async saveModelBoxes(expenseId: string, boxes: (LocatedBox & { source?: 'MODEL' | 'TEMPLATE'; value?: string | null })[], templateId: string | null = null): Promise<void> {
+  async saveModelBoxes(
+    expenseId: string,
+    boxes: (LocatedBox & { source?: 'MODEL' | 'TEMPLATE'; value?: string | null })[],
+    template: { id: string; by: TemplateMatchKind } | null = null
+  ): Promise<void> {
     await prisma.$transaction([
       prisma.expenseFieldBox.deleteMany({ where: { expenseId, source: { in: ['MODEL', 'TEMPLATE'] } } }),
       prisma.expenseFieldBox.createMany({ data: boxes.map(({ source = 'MODEL', ...box }) => ({ ...box, expenseId, source })) }),
-      prisma.expense.update({ where: { id: expenseId }, data: { boxesLocatedAt: new Date(), templateId } })
+      prisma.expense.update({ where: { id: expenseId }, data: { boxesLocatedAt: new Date(), templateId: template?.id ?? null, templateMatch: template?.by ?? null } })
     ]);
   },
 

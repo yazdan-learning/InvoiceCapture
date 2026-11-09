@@ -377,8 +377,108 @@ back is that setting only. So far `TEMPLATE` reads with the same extractor and a
     when the OCR is sure: average confidence ≥ 0.8; a text PDF's words always). The response's
     `templateValues` give those in the form's units; the review page flags a field as
     "Check" when the box holds a value the field lacks or a different one (Use it / Ignore), or
-    when the template expects a value and none was read. Next: matching by the form's printed words and the page's look,
-    aligning to the scan, and guiding the reading.
+    when the template expects a value and none was read.
+  - **Found by the form** (step 2, `template-match.ts`; all free) when the vendor finds none
+    (name misread, handwritten, a vendor new here), in this order:
+    1. the vendor's template — skipped when its printed words are missing from a page that has
+       plenty (≥ 30 sure words, < 15 % of its words: another of the vendor's forms); with several
+       forms of a vendor, the one whose words are on the page;
+    2. **printed words**: the form's fixed words (labels, form code, the vendor's own address —
+       words the OCR is sure of, with letters, once on the page, outside every value box and
+       the items table), kept in `words` with how many of the template's `samples` showed them
+       (kept while seen on at least half). A template matches when ≥ 40 % (and ≥ 6) of its
+       words sit where one alignment puts them; others' common labels ("Total", "تاریخ")
+       scattered elsewhere don't count;
+    3. **page look** (`look`): the first page's ink-edge density on a 48×48 grid and its
+       row/column profiles — a fingerprint, too coarse to show text. ≥ 0.7 is the same form
+       (other forms measured ≤ 0.64, same form shifted 0.87–0.98; a stationery-shop
+       "فاکتور فروش" pad filled in by different vendors 0.55–0.89). For handwritten and blurry
+       scans, whose words Tesseract can't read (1–8 sure words on such photos).
+    Ways 2–3 need a **clear winner** (a template of another layout scoring within 0.1 / 0.05
+    means none; templates of the same layout — several vendors on one printed form — don't
+    compete) and skip **distrusted** templates (sent ≥ 2 times, corrected on most). Candidates:
+    templates whose first page has the shape (`firstPageAspect`, indexed), latest 300.
+    `Expense.templateMatch` (`vendor` / `words` / `look`) reaches the review page as
+    `template.matchedBy`; found by the form, the note says so (maybe another vendor's
+    template of the same form). A handwritten invoice's words are read only for this.
+  - **Aligned to the scan**: the matched words give each page's shift and zoom (robust fit,
+    zoom 0.85–1.18), else the look's row/column profiles the shift; boxes and table rows move
+    with it. On learning, the template's kept boxes and words are moved into the new
+    invoice's place before merging, so old and new agree.
+  - **Another form, not an update**: a trusted template (sent ≥ 2, not distrusted) whose boxes
+    nearly all moved on a sent invoice, or whose printed words are missing, stays as it is;
+    a new template is created for the vendor's other form.
+  - **Guiding the reading on upload** (step 3, `template-extractor.ts`, `template-guide.ts`):
+    before the AI reading, the template is found the same way (`template-finder.ts`, shared
+    with the review page), with the vendor taken from the Mistral OCR text — every tax-ID-like
+    digit run and every run of up to four words (`taxIdsInText`, `vendorKeysInText`, across
+    lines: "HELIX" over "TOOLS") looked up at once; several vendors in the text (the customer
+    is one too) are told apart by the form. Tesseract runs only when a candidate template needs
+    its words; handwritten invoices (no OCR first) are found by the form. The reading's prompt
+    gets `ExtractOptions.hints` (`templateHints`: the likely vendor — or "same printed form,
+    the vendor may differ" — each field's place and the printed words beside it, the items
+    table; the document wins where it differs). The classic reader adds hints only when
+    given; CLASSIC never gets any.
+    - **Checked** (`checkGuidedReading`, free): every box whose words Tesseract is sure of
+      agrees with the value read (amounts, dates, invoice number; Persian digits = Western),
+      the vendor is the template's when found by the vendor, total/date/number are there when
+      the template has them, the lines add up, one invoice. Any problem → read again without
+      the template, and that reading is used (`fell-back`).
+    - **New templates** (`isTrusted`: fewer than 3 sends without corrections): both readings
+      are made at once, the plain one is used, and `differences` keeps where they differ
+      (`compared`; costs a second call until trusted).
+    - `rawExtraction.template.match` = `{ id, by, vendorName, outcome: used | fell-back |
+      compared, problems, differences? }`; the log says the same (`template reading: …`). The
+      review page places its boxes from that template unless the reading fell back.
+    - Live, HELIX TOOLS and the NOVA STEEL copy (same form, other vendor): found by vendor in
+      the OCR text, no problems, guided = plain reading; trusted: 1 call, `used`.
+    - **Correction counting** (`correctedTemplate`): only a template box the user moved
+      clearly elsewhere (centre > 0.02) or removed counts against trust; a box drawn where the
+      template's was (to fill the field) or for a field it lacked doesn't.
+  - **The user's choices become rules** (`InvoiceTemplate.chosen`, `chosenFields`, counts
+    only): when a sent invoice's text field (invoice number, vendor name / tax ID / address)
+    was changed from what was read (`Expense.initialReading`) to the text of a box the user
+    drew, that field counts once more (from one again when the box is elsewhere; typed
+    without a box: the rule is dropped). From `RULE_AFTER` = 2 the hint becomes a RULE ("take
+    exactly the value printed there, even when another seems to fit better"), the box check
+    skips it, and `withRuledFields` takes the box's words when Tesseract is sure of them
+    (≥ 0.8; small print on a low-res scan reads as garbage, "F-LO-005" → "T 303").
+    `match.ruled` lists the fields set so. Each rule keeps the **label** printed before the
+    chosen value in the OCR text (`labelBefore`; amounts by their digits with any separators,
+    skipping line items' names): the hint says "the value right after 'شماره خروج'" and
+    `valueAfter` takes it from the OCR text, exact. Amounts (total, subtotal, tax, discount)
+    can be rules too. Rules are applied before the checks.
+  - **Text readings get no places**: the model reading OCR text can't use "15 % down", and
+    with places (and Tesseract's guessed Persian labels) it dropped a receipt's line items;
+    a text reading gets the vendor and the user's rules only, plus "read every other value
+    and line item as usual". Places are given when the model sees the page (handwriting,
+    the image fallback).
+  - **OCR that missed part of a known form** (`completeOcrText`): Mistral OCR now and then
+    skips part of a page (ونوس شیشه: 12 of 17 uploads read "هزینه مازاد" as 45,000,000 and
+    dropped "هزینه کل" → total 90,000,000). The labels of the template's rules
+    (`requiredLabels`) are printed on every invoice of the form; text without one is OCRed
+    again (up to 2 more calls, the text missing the fewest kept), and still missing, the
+    vision model reads the page image with the OCR text and what it missed
+    (`readFromImage`). `template.ocrRetries`, `template.ocrMissing`. Live, with a total rule
+    "after هزینه کل": 3 of 3 readings 45,000,000.
+  - **Form guide** (`form-guide.ts`, `InvoiceTemplate.guide`): on every send, not only on
+    corrections, the printed label before each confirmed value is found in the invoice's OCR
+    text (`learnGuide`; number, dates, tax ID and amounts, in printed units; a value alone in
+    a table cell takes the cell before it). A total printed after several labels takes the one
+    with a total's words ("کل", "جمع", "پرداخت", "Summe", …), else the last. Also learned: the
+    labelled amounts with the total's first word that add up to it ("هزینه پایه + مازاد +
+    تخلیه = هزینه کل"), and the label of what the reading wrongly took for a corrected field
+    ("not after شماره قرارداد"). A value not printed in the text (a wrong total sent) teaches
+    nothing. A label counts from 2 sends on and when it has most of the field's sightings
+    (`learnedLabel`). It goes into the text model's prompt ("How this form prints its
+    values"), its fields are checked against the value printed after the label
+    (`guideProblems`, a failed check falls back), and the total/number/date labels count as
+    always printed for the OCR check. Labels and counts only: shared with the template.
+  - **Cheaper model** (`LLM_MODEL_TEMPLATE`, e.g. `mistral-small-latest`; empty = the usual
+    model): a trusted template with a learned guide or a rule is read with it from the OCR
+    text (`match.cheapModel`); a failed check reads again with `LLM_MODEL_FAST`. Live:
+    ونوس 2 of 3 cheap only (the 3rd misread the date, caught, read again), HELIX 2 of 2.
+  - Next: crops of the boxes read by a smaller model.
 - **Drawing a box fills the field** (`read-box`, `box-text.ts`, no model): the words whose centre
   lies in the box, in reading order (right to left for Persian lines), from the page words read
   on open, else a text PDF's own words, else Tesseract on just that region. An amount is the
@@ -415,7 +515,7 @@ back is that setting only. So far `TEMPLATE` reads with the same extractor and a
   against the printed savings). The review page shows them with one click to use the price.
 
 Every upload also keeps `Expense.initialReading`, what the AI read, so it can be compared with
-what the user saved. Template matching (vendor keys, printed words) comes next.
+what the user saved.
 
 Scripts: `scripts/eval-extract.ts` scores readings against confirmed invoices (free on stored
 readings; `--rerun` reads the files again, at the cost of one reading each);

@@ -63,6 +63,13 @@ export type ExtractOptions = {
   ocrText?: string;
   /** Organization.invoiceReader, for the extractor that picks CLASSIC or TEMPLATE. */
   reader?: string;
+  /** The uploading organization: the template-guided reader looks up its (and shared) invoice templates. */
+  organizationId?: string;
+  /**
+   * What is known about the document's form (the template-guided reader, from a matching invoice
+   * template), added to the reading's prompt. The classic reader never gets any.
+   */
+  hints?: string;
 };
 
 export interface InvoiceExtractor {

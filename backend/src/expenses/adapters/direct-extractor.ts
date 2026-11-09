@@ -67,7 +67,7 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
   async extract(upload: UploadedFile, options: ExtractOptions = {}): Promise<ExtractionResult> {
     const country = options.country ?? international;
     const locale: Locale = { rules: country.invoice, calendar: getCalendar(country.calendar) };
-    const result = await this.extractAny(upload, locale, options.handwritten ? country.invoice.handwriting : undefined, options.ocrText);
+    const result = await this.extractAny(upload, locale, options.handwritten ? country.invoice.handwriting : undefined, options.ocrText, options.hints ?? '');
     // Last, so every check above works in the units printed on the invoice.
     const inStoredUnits = (data: ExtractedInvoiceData) => applyCurrencyUnits(data, locale.rules.currencyUnits);
     return result.data
@@ -75,17 +75,17 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
       : result;
   }
 
-  private async extractAny(upload: UploadedFile, locale: Locale, handwriting: HandwritingRules | undefined, ocrText?: string): Promise<ExtractionResult> {
+  private async extractAny(upload: UploadedFile, locale: Locale, handwriting: HandwritingRules | undefined, ocrText: string | undefined, hints: string): Promise<ExtractionResult> {
     const file: OcrFile = { buffer: upload.buffer, filename: upload.originalname, contentType: upload.mimetype };
     const image = pageImage(file);
     try {
-      if (!handwriting) return await this.extractPrinted(file, image, locale, ocrText);
+      if (!handwriting) return await this.extractPrinted(file, image, locale, ocrText, hints);
 
       const pages = pageImages(file);
-      const handwritten = pages.length ? await this.extractHandwritten(file, pages, locale, handwriting, ocrText).catch((err: Error) => err) : null;
+      const handwritten = pages.length ? await this.extractHandwritten(file, pages, locale, handwriting, ocrText, hints).catch((err: Error) => err) : null;
       if (handwritten && !(handwritten instanceof Error)) return handwritten;
       // No photo to look at, or the vision model is down: the OCR reading is still better than nothing.
-      const printed = await this.extractPrinted(file, image, locale, ocrText);
+      const printed = await this.extractPrinted(file, image, locale, ocrText, hints);
       return {
         ...printed,
         // OCR misreads handwritten digits, so its numbers are never trusted here.
@@ -99,8 +99,8 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
     }
   }
 
-  private async extractPrinted(file: OcrFile, image: string | null, locale: Locale, givenOcrText?: string): Promise<ExtractionResult> {
-    const { ocrText, first } = await this.ocrReading(file, locale, givenOcrText);
+  private async extractPrinted(file: OcrFile, image: string | null, locale: Locale, givenOcrText: string | undefined, hints = ''): Promise<ExtractionResult> {
+    const { ocrText, first } = await this.ocrReading(file, locale, givenOcrText, hints);
     const count = Math.round(num(first.structured.invoiceCount) ?? 1);
     if (count < 2) {
       const transfer = toTransfer(first.structured, locale.calendar);
@@ -208,9 +208,16 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
    * handwritten total's digits but drops its zeros, and gets dates wrong).
    * Every field that disagrees or fails a check is named in the warning.
    */
-  private async extractHandwritten(file: OcrFile, pages: string[], locale: Locale, handwriting: HandwritingRules, givenOcrText?: string): Promise<ExtractionResult> {
+  private async extractHandwritten(
+    file: OcrFile,
+    pages: string[],
+    locale: Locale,
+    handwriting: HandwritingRules,
+    givenOcrText: string | undefined,
+    hints = ''
+  ): Promise<ExtractionResult> {
     const [vision, ocr] = await Promise.all([
-      this.read(this.vision, invoiceHandwrittenPrompt({ ...locale.rules, handwriting }, locale.calendar.today()), locale.calendar, pages),
+      this.read(this.vision, invoiceHandwrittenPrompt({ ...locale.rules, handwriting }, locale.calendar.today()) + hints, locale.calendar, pages),
       this.ocrReading(file, locale, givenOcrText).catch(() => null)
     ]);
     const { structured } = vision;
@@ -274,10 +281,11 @@ export class DirectInvoiceExtractor implements InvoiceExtractor {
     };
   }
 
-  private async ocrReading(file: OcrFile, locale: Locale, givenOcrText?: string): Promise<{ ocrText: string; first: Reading }> {
+  /** `hints`: what the template-guided reader knows about the form (empty for the classic reader). */
+  private async ocrReading(file: OcrFile, locale: Locale, givenOcrText?: string, hints = ''): Promise<{ ocrText: string; first: Reading }> {
     const ocrText = givenOcrText ?? (await retryStep(() => this.ocr.extractText(file)));
     if (!ocrText.trim()) throw new Error('No text found on the document - please upload a clearer photo or PDF');
-    return { ocrText, first: await this.read(this.llm, invoiceStructurePrompt(ocrText, locale.rules), locale.calendar) };
+    return { ocrText, first: await this.read(this.llm, invoiceStructurePrompt(ocrText, locale.rules) + hints, locale.calendar) };
   }
 
   private async read(llm: LlmClient, prompt: string, calendar: Calendar, image?: string | string[]): Promise<Reading> {

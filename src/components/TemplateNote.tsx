@@ -8,13 +8,19 @@ export type TemplateNoteState = { templateLearned?: TemplateLearned };
 // After an invoice is sent (or an expense submitted), the next page says that
 // the vendor's template was created or updated: its next invoice gets its boxes from it.
 export function TemplateNote() {
+  const text = useTemplateNoteText();
+  if (!text) return null;
+  return (
+    <div className="alert alert-success" role="status">
+      <span>{text}</span>
+    </div>
+  );
+}
+
+/** The same note as text (null: nothing was just learned), for pages that show it elsewhere (the review page's header line). */
+export function useTemplateNoteText(): string | null {
   const { t } = useTranslation();
   const learned = (useLocation().state as TemplateNoteState | null)?.templateLearned;
   if (!learned) return null;
-  const vendor = learned.vendorName?.trim() || t('review.untitled');
-  return (
-    <div className="alert alert-success" role="status">
-      <span>{t(learned.created ? 'review.templateCreated' : 'review.templateUpdated', { vendor })}</span>
-    </div>
-  );
+  return t(learned.created ? 'review.templateCreated' : 'review.templateUpdated', { vendor: learned.vendorName?.trim() || t('review.untitled') });
 }

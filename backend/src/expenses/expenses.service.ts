@@ -141,7 +141,7 @@ export function createExpensesService({
       let extraction: Awaited<ReturnType<InvoiceExtractor['extract']>> | null = null;
       let errorMessage: string | null = null;
       try {
-        extraction = await extractor.extract(file, { ...extractOptions, country, reader });
+        extraction = await extractor.extract(file, { ...extractOptions, country, reader, organizationId });
       } catch (err) {
         errorMessage = err instanceof Error ? err.message : 'Extraction failed';
       }

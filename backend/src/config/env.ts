@@ -29,7 +29,10 @@ export const env = {
     },
     // The template-guided reader's last look at an invoice that still doesn't add up. Empty = skipped:
     // in November 2026 mistral-large-latest read the test receipts no better than medium.
-    largeModel: process.env.LLM_MODEL_LARGE || ''
+    largeModel: process.env.LLM_MODEL_LARGE || '',
+    // The template-guided reader's model for a trusted form with something learned to go by (cheaper, e.g.
+    // mistral-small-latest); its reading is checked and falls back to the usual model. Empty = the usual model.
+    templateModel: process.env.LLM_MODEL_TEMPLATE || ''
   },
   // A separate vision model for handwritten invoices (Mistral can't read Persian
   // handwriting). Any OpenAI-compatible API; Gemini by default. Without

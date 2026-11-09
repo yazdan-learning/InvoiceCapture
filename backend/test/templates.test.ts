@@ -1,3 +1,4 @@
+import { EMPTY_GUIDE } from '../src/reading/form-guide';
 import { describe, expect, it } from 'vitest';
 import { bestTemplate, fitsPages, layoutFromBoxes, placeFromTemplate, StoredTemplate, taxIdKey, vendorKey } from '../src/reading/templates';
 
@@ -74,6 +75,11 @@ describe('bestTemplate', () => {
     timesSent: 0,
     timesCorrected: 0,
     updatedAt: new Date('2026-11-01'),
+    words: [],
+    samples: 1,
+    look: null,
+    chosen: {},
+    guide: EMPTY_GUIDE,
     ...o
   });
 

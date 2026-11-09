@@ -369,6 +369,7 @@ const pl: Translations = {
     templateUpdated: 'Szablon dla {vendor} zaktualizowano tą fakturą.',
     boxesFromTemplate: 'Ramki z szablonu dla {vendor}. Przesuń te, które nie pasują.',
     boxesFromSharedTemplate: 'Ramki ze wspólnego szablonu dla {vendor} (od innych użytkowników aplikacji; tylko układ). Przesuń te, które nie pasują.',
+    boxesFromSameForm: 'Ramki z szablonu formularza, który wygląda tak samo ({vendor}), rozpoznanego po formularzu, nie po nazwie dostawcy. Przesuń te, które nie pasują.',
     issueTemplateFill: 'w ramce szablonu jest {value}, ale pole jest puste',
     issueTemplateDiffers: 'w ramce szablonu jest {value}, a nie odczytana wartość',
     issueTemplateEmpty: 'szablon oczekuje tu wartości, ale nic nie odczytano',

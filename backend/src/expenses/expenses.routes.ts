@@ -22,6 +22,7 @@ import { validate } from '../shared/validate';
 import { FileStorage, InvoiceExtractor } from './ports';
 import { createReadingService } from '../reading/reading.service';
 import { createReadingRouter } from '../reading/reading.routes';
+import { templatesRepository } from '../reading/templates.repository';
 import {
   approveSchema,
   createMileageSchema,
@@ -53,6 +54,10 @@ const upload = multer({
 const fileStorage: FileStorage =
   env.fileStorageProvider === 's3' ? new S3FileStorage(env.s3) : new LocalDiskFileStorage(env.uploadsDir);
 
+// The Tesseract service (TESSERACT_URL): word positions for field boxes, finding invoice templates by their
+// printed words, and drawing PDFs made from text as page images. Absent: the vision model / no word OCR.
+const wordOcr = env.tesseract.url ? new TesseractOcr({ baseUrl: env.tesseract.url, token: env.tesseract.token, languages: env.tesseract.languages, timeoutMs: env.tesseract.timeoutMs }) : null;
+
 function directExtractor(): InvoiceExtractor {
   const ocr = new MistralOcr({ ...env.ocr, timeoutMs: env.aiTimeoutMs });
   const classic = new DirectInvoiceExtractor(
@@ -65,7 +70,20 @@ function directExtractor(): InvoiceExtractor {
     ? new OpenAiCompatibleLlm({ ...env.llm, models: { fast: env.llm.largeModel, smart: env.llm.largeModel }, timeoutMs: env.aiTimeoutMs })
     : null;
   // TEMPLATE reads a shop app's long receipt in pieces (OCR shrinks a page that tall); CLASSIC reads it whole as before.
-  return new ReaderSwitchExtractor(classic, new TemplateInvoiceExtractor(classic, new TallImageOcr(ocr), large));
+  // The template-guided reader looks up invoice templates before reading (and guides the reading with them).
+  // When the OCR keeps missing what a known form always prints, the vision model reads the page image.
+  const vision = env.vision.apiKey ? new OpenAiCompatibleLlm({ ...env.vision, models: { fast: env.vision.model, smart: env.vision.model } }) : null;
+  const guide = { templates: templatesRepository, words: () => wordOcr, renderer: () => wordOcr, vision: () => vision };
+  // A trusted form with something learned to go by is read with the cheaper model (LLM_MODEL_TEMPLATE), when set.
+  const model = env.llm.templateModel;
+  const cheap = model
+    ? new DirectInvoiceExtractor(
+        ocr,
+        new OpenAiCompatibleLlm({ ...env.llm, models: { fast: model, smart: model }, timeoutMs: env.aiTimeoutMs }),
+        vision ?? undefined
+      )
+    : null;
+  return new ReaderSwitchExtractor(classic, new TemplateInvoiceExtractor(classic, new TallImageOcr(ocr), large, guide, cheap));
 }
 
 const extractor: InvoiceExtractor =
@@ -87,7 +105,6 @@ const expensesController = createExpensesController(expensesService);
 // from box" from the Tesseract service's word positions when TESSERACT_URL is
 // set (which also draws PDFs made from text as page images); "Read with AI"
 // with the vision model, or with the main LLM when no separate vision model is configured.
-const wordOcr = env.tesseract.url ? new TesseractOcr({ baseUrl: env.tesseract.url, token: env.tesseract.token, languages: env.tesseract.languages, timeoutMs: env.tesseract.timeoutMs }) : null;
 const readingService = createReadingService({
   expenses: expensesService,
   fileStorage,

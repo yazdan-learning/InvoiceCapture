@@ -3725,3 +3725,35 @@ h1 {
   background: #eff6ff;
   color: #1e40af;
 }
+
+.review-title-warning--success {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.review-title-warning--error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+/* On the one header line the vendor name and the facts keep their room; the warning pills shrink first (whole text on hover). */
+@media (min-width: 901px) {
+  .review-header--compact .review-title h1 {
+    flex: 0 1 auto;
+    min-width: 8ch;
+    max-width: 32ch;
+  }
+
+  .review-header--compact .review-title-facts {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+
+  .review-header--compact .review-title-warning {
+    flex: 0 100 auto;
+    min-width: 6ch;
+  }
+}
