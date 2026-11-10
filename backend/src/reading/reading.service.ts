@@ -9,6 +9,7 @@ import {
   type PdfRenderer,
   type PositionedOcrClient
 } from '@yazdan-learning/ai';
+import { createHash } from 'node:crypto';
 import { LlmClient } from '../ai/gateway/llm';
 import { LocateTarget } from '../ai/prompts/field-boxes';
 import { num, westernDigits } from '../ai/replies';
@@ -264,6 +265,39 @@ export function correctedTemplate(used: StoredTemplate, boxes: { field: string; 
 /** The fields a chosen-value rule can hold: text read as it is printed, and the amounts the user picked out. */
 const CHOOSABLE = ['invoiceNumber', 'vendorName', 'vendorTaxId', 'vendorAddress', 'totalAmount', 'subtotal', 'taxAmount', 'discountAmount'];
 
+/** Text compared loosely: Persian ي/ك and digits, joiners, case, spacing and punctuation don't count. */
+const looseText = (s: string) =>
+  westernDigits(s.normalize('NFKC')).replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/[\u200c\u200d]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+/**
+ * Whether the OCR text of the page (Mistral's, kept with the reading) also has
+ * the value a template box holds (Tesseract's words): an amount or a date
+ * printed anywhere in it, a text inside it. A short text (under 3 letters or
+ * digits) is too common to tell: taken as found.
+ */
+export function inOcrText(kind: 'text' | 'amount' | 'date', value: string | number, ocrText: string): boolean {
+  const text = westernDigits(ocrText);
+  if (kind === 'amount') return text.split(/[\s|]+/).some((token) => /\d/.test(token) && printedAmount(token) === value);
+  if (kind === 'date') return [...text.matchAll(/\d{1,4}\s*[./\-]\s*\d{1,2}\s*[./\-]\s*\d{1,4}/g)].some((m) => printedDate(m[0]) === value);
+  const wanted = looseText(String(value));
+  return wanted.length < 3 || looseText(text).includes(wanted);
+}
+
+/** Number-like text fields: Latin digits, as the reading stores them. */
+const NUMBER_FIELDS = new Set(['invoiceNumber', 'vendorTaxId']);
+
+/**
+ * A text box's value without the label stuck to it: Tesseract reads "فاکتور:۷۰۶۹۷" as one
+ * word when the form prints no space after the colon. The number and tax ID in Latin digits.
+ */
+export function printedText(field: string, text: string): string {
+  // Without the direction marks (U+200E/F, U+202A–E, U+2066–9) the OCR puts around Persian text.
+  const clean = text.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim();
+  const afterLabel = clean.includes(':') ? clean.slice(clean.lastIndexOf(':') + 1).trim() : clean;
+  const value = afterLabel || clean;
+  return NUMBER_FIELDS.has(field) ? westernDigits(value) : value;
+}
+
 const plain = (value: unknown) => (value === null || value === undefined ? '' : westernDigits(String(value)).toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''));
 const amountOf = (value: unknown) => (value === null || value === undefined || value === '' ? null : Math.round(Number(value) * 100));
 
@@ -344,6 +378,25 @@ export function sentInvoice(expense: ReadableExpense, amountFactors: number[]): 
   }
   return { ocrText, values, read, itemNames: expense.items.map((i) => i.description).filter(Boolean), amountFactors };
 }
+
+/** Receipts a template remembers having learned from (the latest). */
+const LEARNED_FROM_MAX = 100;
+const shortHash = (s: string | Buffer) => createHash('sha256').update(s).digest('hex').slice(0, 16);
+
+/**
+ * Short hashes that tell a receipt sent again: its file, and its vendor +
+ * number + date (another photo of it). Hashes only: shared with the template.
+ */
+export function receiptKeys(file: Buffer | null, expense: ReadableExpense, vendor: { taxId: string | null; key: string | null }): string[] {
+  const keys = file ? [`f${shortHash(file)}`] : [];
+  const number = typeof expense.invoiceNumber === 'string' ? westernDigits(expense.invoiceNumber).replace(/\s+/g, '').toLowerCase() : '';
+  const date = guideValue('invoiceDate', expense.invoiceDate);
+  if (number && date) keys.push(`r${shortHash(`${vendor.taxId ?? vendor.key}|${number}|${date}`)}`);
+  return keys;
+}
+
+const learnedBefore = (t: { learnedFrom?: string[] } | null, keys: string[]) => !!t && keys.some((k) => (t.learnedFrom ?? []).includes(k));
+const withLearned = (t: { learnedFrom?: string[] } | null, keys: string[]) => [...keys, ...(t?.learnedFrom ?? []).filter((k) => !keys.includes(k))].slice(0, LEARNED_FROM_MAX);
 
 /** The template's guide after this invoice was sent. */
 function guideAfter(before: FormGuide | undefined, expense: ReadableExpense, amountFactors: number[]): FormGuide | undefined {
@@ -523,12 +576,15 @@ export function createReadingService({
     const template = used ? await templates.findById(used.id) : null;
     const boxes = await repository.listBoxes(expense.id);
     const country = getCountryProfile((await repository.getReadingSettings(organizationId)).country);
+    const ocrText = (expense.rawExtraction as { ocrText?: unknown } | null)?.ocrText;
     const templateValues = boxes
       .filter((b) => b.source === 'TEMPLATE' && isPickableField(b.field))
-      .map(({ field, value: text }) => {
+      .flatMap(({ field, value: text }) => {
         const { kind } = PICKABLE_FIELDS[field];
-        const printed = text === null ? null : kind === 'amount' ? printedAmount(text) : kind === 'date' ? printedDate(text) : text;
-        return { field, text, value: printed === null ? null : toFormValue(expense, country, field, String(printed)) };
+        const printed = text === null ? null : kind === 'amount' ? printedAmount(text) : kind === 'date' ? printedDate(text) : printedText(field, text);
+        // A value Mistral's OCR of the same page doesn't have is most likely Tesseract's misread: no warning from it.
+        if (printed !== null && typeof ocrText === 'string' && !inOcrText(kind, printed, ocrText)) return [];
+        return [{ field, text, value: printed === null ? null : toFormValue(expense, country, field, String(printed)) }];
       });
     return {
       enabled: true,
@@ -655,7 +711,11 @@ export function createReadingService({
       const used = typeof expense.templateId === 'string' ? await templates.findById(expense.templateId) : null;
       // Fields the user removed the box of on this invoice (Remove): the template forgets them.
       const removed = (await repository.listRemovedFields(expense.id)).filter((field) => !boxes.some((b) => b.field === field));
-      if (used) await templates.recordUse(used.id, correctedTemplate(used, boxes, removed));
+      // A receipt the template learned from already (sent again, uploaded again): its boxes still count, but it
+      // teaches no trust, words, look, rules or guide — its own values would pass for the form's printed text.
+      const file = expense.filePath ? await fileStorage.read(expense.filePath).catch(() => null) : null;
+      const receipt = receiptKeys(file, expense, keys);
+      if (used && !learnedBefore(used, receipt)) await templates.recordUse(used.id, correctedTemplate(used, boxes, removed));
 
       // The organization's template for this vendor and form: the one used when it is the vendor's, else the vendor's whose words are here.
       const ofVendor = (t: StoredTemplate) => (keys.taxId !== null && t.vendorTaxId === keys.taxId) || (keys.key !== null && t.vendorKey === keys.key);
@@ -684,6 +744,18 @@ export function createReadingService({
           // This invoice's boxes win; fields it didn't have keep the template's (another invoice may have had a due date),
           // except the ones the user removed from it.
           const kept = Object.fromEntries(Object.entries(moved.fields).filter(([field]) => !removed.includes(field)));
+          if (learnedBefore(own, receipt)) {
+            await templates.update(own.id, {
+              fields: { ...kept, ...layout.fields },
+              items: layout.items ?? moved.items,
+              pageAspects: own.pageAspects,
+              words: own.words,
+              samples: own.samples,
+              look: own.look,
+              chosen: own.chosen
+            });
+            return { vendorName: vendorName ?? own.vendorName, created: false };
+          }
           const merged = mergeWords(own.words, own.samples, words, (w) => {
             const t = transforms[w.page] ?? IDENTITY;
             return { ...w, x: t.ax * w.x + t.bx, y: t.ay * w.y + t.by };
@@ -696,6 +768,7 @@ export function createReadingService({
             look: look ?? own.look,
             chosen: chosenFields(expense, boxes, own.chosen, moved),
             guide: guideAfter(own.guide, expense, factors),
+            learnedFrom: withLearned(own, receipt),
             vendorTaxId: keys.taxId,
             vendorKey: keys.key,
             vendorName
@@ -710,6 +783,7 @@ export function createReadingService({
         look,
         chosen: chosenFields(expense, boxes, {}, null),
         guide: guideAfter(undefined, expense, factors),
+        learnedFrom: receipt,
         organizationId,
         shared: settings.shareTemplates,
         vendorTaxId: keys.taxId,

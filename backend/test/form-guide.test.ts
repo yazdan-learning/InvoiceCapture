@@ -119,3 +119,36 @@ describe('a value alone in its table cell', () => {
     expect(guide.labels.totalAmount[0].label).toBe('مبلغ پرداختی');
   });
 });
+
+describe("what the form doesn't print, and its line items", () => {
+  const withItems = (names: string[]) => ({ ...sent(receipt(), { invoiceNumber: 'SF1', invoiceDate: '2026-10-21', totalAmount: 45_000_000 }), itemNames: names });
+  const guide = learnGuide(learnGuide(EMPTY_GUIDE, withItems(['هزینه پایه'])), withItems(['هزینه پایه']));
+
+  it('says tax and discount are empty on this form, and that its charges are its lines, leaving out the ones that are 0', () => {
+    const lines = guideLines(guide).join('\n');
+    expect(lines).toContain('- taxAmount and discount: this form has printed none on its last 2 invoices: leave them empty unless this one clearly prints one.');
+    expect(lines).toContain('- items: one line per charge printed with the total ("هزینه پایه", "هزینه مازاد", "هزینه تخلیه"), named as printed, with its amount; leave out the charges that are 0.');
+  });
+
+  it('says nothing of the items when they were products, not the charges', () => {
+    const products = learnGuide(learnGuide(EMPTY_GUIDE, withItems(['شیشه ۱۰ میل'])), withItems(['شیشه ۱۰ میل']));
+    expect(guideLines(products).join('\n')).not.toContain('- items:');
+  });
+
+  it('says nothing of a tax the form printed once', () => {
+    const taxed = learnGuide(guide, { ...withItems(['هزینه پایه']), values: { totalAmount: 45_000_000, taxAmount: 4_000_000 } });
+    expect(guideLines(taxed).join('\n')).not.toContain('taxAmount and');
+    expect(guideLines(taxed).join('\n')).toContain('- discount: this form has printed none');
+  });
+});
+
+describe('withoutZeroCharges', () => {
+  it("drops the form's 0 charges from the lines, once the invoices sent left them out, and nothing else", async () => {
+    const { withoutZeroCharges } = await import('../src/reading/form-guide');
+    const withItems = { ...sent(receipt(), { totalAmount: 45_000_000 }), itemNames: ['هزینه پایه'] };
+    const guide = learnGuide(learnGuide(EMPTY_GUIDE, withItems), withItems);
+    const data = { items: [{ description: 'هزینه پایه', totalPrice: 45_000_000 }, { description: 'هزینه مازاد', totalPrice: 0 }, { description: 'Rabatt', totalPrice: 0 }] };
+    expect(withoutZeroCharges(guide, data).items.map((i) => i.description)).toEqual(['هزینه پایه', 'Rabatt']);
+    expect(withoutZeroCharges(EMPTY_GUIDE, data)).toBe(data);
+  });
+});

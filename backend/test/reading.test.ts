@@ -112,6 +112,7 @@ class MemoryTemplates implements TemplatesRepository {
   async recordUse(id: string, corrected: boolean) {
     this.uses.push({ id, corrected });
   }
+  async recordCheapReading() {}
 }
 
 /** A template for the test vendor (فروشگاه نمونه, tax ID 411111111111) on a 400 x 200 page. */
@@ -652,6 +653,37 @@ describe('invoice templates', () => {
     );
   });
 
+  it("reads a text box's value without the label stuck to it, the number in Latin digits", async () => {
+    const { printedText } = await import('../src/reading/reading.service');
+    expect(printedText('invoiceNumber', 'فاکتور:۷۰۶۹۷')).toBe('70697');
+    expect(printedText('invoiceNumber', 'فاکتور:۷۰۶۹۷\u200e')).toBe('70697');
+    expect(printedText('vendorAddress', 'آدرس: تهران، خیابان ۱۲')).toBe('تهران، خیابان ۱۲');
+    expect(printedText('invoiceNumber', 'RE-2026-0412')).toBe('RE-2026-0412');
+    expect(printedText('invoiceNumber', 'Nr.:')).toBe('Nr.:');
+  });
+
+  it("gives no template value Mistral's OCR of the page doesn't have (Tesseract's misread)", async () => {
+    const templates = new MemoryTemplates();
+    templates.templates.push(template({ fields: { ...template().fields, totalAmount: { page: 0, x: 0.6, y: 0.6, width: 0.2, height: 0.05 } } }));
+    const words = new FakeWords([word('99,000', 0.62, 0.605)]);
+    const misread = await service({ templates, words, expense: fromVendor({ rawExtraction: { data: { currency: 'IRT' }, ocrText: 'جمع کل: ۹۸,۰۰۰' } } as Partial<ReadableExpense>) });
+    expect((await misread.reading.getFieldBoxes('org', 'e1', actor)).templateValues ?? []).not.toContainEqual(expect.objectContaining({ field: 'totalAmount' }));
+    const confirmed = await service({ templates, words, expense: fromVendor({ rawExtraction: { data: { currency: 'IRT' }, ocrText: 'جمع کل: ۹۹,۰۰۰' } } as Partial<ReadableExpense>) });
+    expect((await confirmed.reading.getFieldBoxes('org', 'e1', actor)).templateValues).toContainEqual({ field: 'totalAmount', text: '99,000', value: 990000 });
+  });
+
+  it('finds an amount, a date and a text in the OCR text, however its digits are written', async () => {
+    const { inOcrText } = await import('../src/reading/reading.service');
+    const ocr = '| شماره فاکتور: ۷۰۶۹۷ | تاریخ: ۱۴۰۵/۰۷/۲۱ |\n| مبلغ پرداختی | ۲,۳۹۰,۰۰۰,۰۰۰ |\nفروشگاه HELIX TOOLS';
+    expect(inOcrText('text', '70697', ocr)).toBe(true);
+    expect(inOcrText('text', '70897', ocr)).toBe(false);
+    expect(inOcrText('text', 'Helix Tools', ocr)).toBe(true);
+    expect(inOcrText('amount', 2_390_000_000, ocr)).toBe(true);
+    expect(inOcrText('amount', 2_380_000_000, ocr)).toBe(false);
+    expect(inOcrText('date', '2026-10-13', ocr)).toBe(true);
+    expect(inOcrText('date', '2026-10-14', ocr)).toBe(false);
+  });
+
   it('ignores a template made for pages of another shape (another form)', async () => {
     const templates = new MemoryTemplates();
     templates.templates.push(template({ pageAspects: [1.41] }));
@@ -864,12 +896,32 @@ describe('invoice templates', () => {
         service({ templates, expense: fromVendor({ invoiceNumber, initialReading: { invoiceNumber: 'TC4456' } }) }).then(async ({ reading, repository }) => {
           repository.boxes = box ? [{ field: 'invoiceNumber', page: 0, x: 0.1, y: 0.1, width: 0.1, height: 0.04, source: 'USER', value: 'F-LO-005' }] : [];
           if (!box) repository.boxes = [{ field: 'totalAmount', page: 0, x: 0.2, y: 0.8, width: 0.2, height: 0.04, source: 'MODEL', value: null }];
+          // One test file stands for several receipts here: forget it was learned from.
+          templates.templates[0].learnedFrom = [];
           await reading.learnTemplate('org', 'e1', actor);
           return templates.templates[0].chosen;
         });
       expect(await chosen('F-LO-005', true)).toEqual({ invoiceNumber: { times: 1, label: null } });
       expect(await chosen('F-LO-005', true)).toEqual({ invoiceNumber: { times: 2, label: null } });
       expect(await chosen('SF9903', false)).toEqual({});
+    });
+
+    it('learns nothing but the boxes from a receipt it learned from already (sent again)', async () => {
+      const templates = new MemoryTemplates();
+      templates.templates.push(template({ vendorTaxId: '411111111111' }));
+      const send = () =>
+        service({ templates, expense: fromVendor({ invoiceNumber: 'F-LO-005', initialReading: { invoiceNumber: 'TC4456' } }) }).then(async ({ reading, repository }) => {
+          repository.boxes = [{ field: 'invoiceNumber', page: 0, x: 0.1, y: 0.1, width: 0.1, height: 0.04, source: 'USER', value: 'F-LO-005' }];
+          await reading.learnTemplate('org', 'e1', actor);
+          return templates.templates[0];
+        });
+      const first = await send();
+      expect(first.chosen).toEqual({ invoiceNumber: { times: 1, label: null } });
+      expect(first.learnedFrom!.length).toBeGreaterThan(0);
+      const samples = first.samples;
+      const again = await send();
+      expect(again.chosen).toEqual({ invoiceNumber: { times: 1, label: null } });
+      expect(again.samples).toBe(samples);
     });
 
     it('counts an amount the user picked from a box, with its printed label', async () => {

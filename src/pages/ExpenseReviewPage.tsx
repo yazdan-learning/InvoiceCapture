@@ -213,10 +213,12 @@ const LOOKS_LIKE_LABELS: Record<string, string> = {
   other: 'review.looksLikeOther'
 };
 
-/** Text compared loosely: Persian ي/ك, joiners, spacing, case and punctuation don't count; one may hold the other. */
+/** Text compared loosely: Persian ي/ك and digits, joiners, spacing, case and punctuation don't count; one may hold the other. */
 const looseText = (s: string) =>
   s
     .normalize('NFKC')
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
     .replace(/ي/g, 'ی')
     .replace(/ك/g, 'ک')
     .replace(/[\u200c\u200d]/g, '')

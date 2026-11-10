@@ -377,7 +377,11 @@ back is that setting only. So far `TEMPLATE` reads with the same extractor and a
     when the OCR is sure: average confidence ≥ 0.8; a text PDF's words always). The response's
     `templateValues` give those in the form's units; the review page flags a field as
     "Check" when the box holds a value the field lacks or a different one (Use it / Ignore), or
-    when the template expects a value and none was read.
+    when the template expects a value and none was read. A box's text loses the label stuck
+    to it and the direction marks ("فاکتور:۷۰۶۹۷" → "70697", `printedText`: Tesseract reads it
+    as one word when no space follows the colon); a value that Mistral's OCR text of the page
+    doesn't have (`inOcrText`: the amount or date anywhere in it, the text inside it) is taken
+    as Tesseract's misread and gives no warning — a second reading of the page, free.
   - **Found by the form** (step 2, `template-match.ts`; all free) when the vendor finds none
     (name misread, handwritten, a vendor new here), in this order:
     1. the vendor's template — skipped when its printed words are missing from a page that has
@@ -478,6 +482,35 @@ back is that setting only. So far `TEMPLATE` reads with the same extractor and a
     model): a trusted template with a learned guide or a rule is read with it from the OCR
     text (`match.cheapModel`); a failed check reads again with `LLM_MODEL_FAST`. Live:
     ونوس 2 of 3 cheap only (the 3rd misread the date, caught, read again), HELIX 2 of 2.
+  - **Fix instead of reading again** (`withGuideFields`): when a trusted form's guided reading
+    fails a check, each learned field is set to what the form prints after its label in this
+    OCR text; if every check then passes it is used (`match.fixed`), else the usual model reads
+    it again.
+  - **Model per form** (`cheapReads`, `cheapFailed`): every cheaper reading is counted, and a
+    failed one (fell back) too; a form the cheaper model failed on more than half of 4+
+    readings is read with the usual model straight away (`cheapUsuallyFails`).
+  - **A PDF made from text** (`pdf-text.ts`, `template.textFrom`, `template.pdfTextUnused`): its
+    own words (pdftotext via the Tesseract service) replace Mistral OCR — exact, free — when
+    every page has text, it is not a scanner app's PDF (a page photo inside: its text is the
+    app's OCR), has 20+ words with digits, no broken characters, and is left to right.
+    Persian/Arabic PDFs stay on Mistral OCR: pdftotext mixes up a line's parts ("شماره
+    فاکتور: 5521 | تاریخ: …" → "… تاریخ: | 5521 فاکتور: شماره"), breaks "لا" ("کالا" →
+    "کاال") and puts table cells one per line. A label missing from a PDF's own text is not
+    printed (no OCR asked again). Live: a German text PDF read with 0 OCR calls, all right.
+  - **A label gone, not missed** (`labelsGone`, `template.formChanged`): before asking the OCR
+    again, Tesseract's words (read anyway to confirm the form) are asked: when they read the page
+    well (30+ words, the form's printed words in place) and lack every distinctive word of the
+    label (one learned as printed once on this form), the form changed — no more OCR calls or
+    image reading for it. Unsure (a poor scan; a label Tesseract never read here, as ونوس's small
+    Persian "هزینه کل"): asked again as before.
+  - **What the form doesn't print, and its lines** (`guide.empty`, `guide.itemsFromParts`): tax
+    and discount empty on every sent invoice (2+) → "leave them empty unless this one clearly
+    prints one"; line items that were the total's parts by name (form text, not products) →
+    "one line per charge … leave out the ones that are 0". The 0 charges are also dropped in
+    code (`withoutZeroCharges`): the small model kept them even when told.
+  - **Learned once per receipt** (`learnedFrom`, `receiptKeys`): short hashes of the file and of
+    vendor + number + date, the latest 100. A receipt sent again updates the boxes only — no
+    trust, printed words, look, rules or guide (its own values would pass for printed text).
   - Next: crops of the boxes read by a smaller model.
 - **Drawing a box fills the field** (`read-box`, `box-text.ts`, no model): the words whose centre
   lies in the box, in reading order (right to left for Persian lines), from the page words read

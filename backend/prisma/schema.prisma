@@ -429,6 +429,13 @@ model InvoiceTemplate {
   // The form guide (form-guide.ts), learned from every sent invoice's OCR text: the printed label before each
   // confirmed value, what the total is the sum of, whether the form has line items. Labels and counts only.
   guide   Json @default("{}")
+  // The receipts learned from (short hashes of the file and of vendor + number + date + total, the latest 100):
+  // the same receipt sent again teaches the form nothing (its own values would pass for printed text).
+  learnedFrom Json @default("[]")
+  // The cheaper model's readings of this form (LLM_MODEL_TEMPLATE), and how many of them failed a check:
+  // a form it usually fails on is read with the usual model straight away.
+  cheapReads  Int @default(0)
+  cheapFailed Int @default(0)
 
   // Trust: invoices sent with it, and how many of those needed its boxes moved.
   timesSent      Int @default(0)

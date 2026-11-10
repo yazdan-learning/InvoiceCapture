@@ -172,6 +172,10 @@ class MemoryTemplates implements TemplatesRepository {
     throw new Error('not here');
   }
   async recordUse() {}
+  cheap: { id: string; failed: boolean }[] = [];
+  async recordCheapReading(id: string, failed: boolean) {
+    this.cheap.push({ id, failed });
+  }
 }
 
 describe('TemplateInvoiceExtractor with templates', () => {
@@ -314,18 +318,20 @@ describe('the form guide and the cheaper model', () => {
   const guide = learnGuide(learnGuide(EMPTY_GUIDE, sentOnce), sentOnce);
   const venus = (o: Partial<StoredTemplate> = {}) => template({ vendorKey: 'ونوسشیشه', vendorName: 'ونوس شیشه', guide, ...o });
 
-  async function read(t: StoredTemplate, cheapReads: Partial<ExtractedInvoiceData>) {
+  async function read(t: StoredTemplate, cheapReads: Partial<ExtractedInvoiceData>, itemTotal?: number) {
     const image = await sharp({ create: { width: 500, height: 500, channels: 3, background: '#fff' } }).jpeg().toBuffer();
     const upload = { buffer: image, originalname: 'r.jpg', mimetype: 'image/jpeg', size: image.length } as UploadedFile;
     const reading = (o: Partial<ExtractedInvoiceData>) => {
       const total = o.totalAmount ?? 45000000;
-      return result({ vendorName: 'ونوس شیشه', invoiceNumber: 'SF9903', totalAmount: total, items: [{ description: 'هزینه پایه', quantity: 1, unitPrice: total, totalPrice: total }], ...o });
+      const line = itemTotal ?? total;
+      return result({ vendorName: 'ونوس شیشه', invoiceNumber: 'SF9903', totalAmount: total, items: [{ description: 'هزینه پایه', quantity: 1, unitPrice: line, totalPrice: line }], ...o });
     };
     const classic = { extract: vi.fn(async (_f: UploadedFile, _o?: ExtractOptions) => reading({})) };
     const cheap = { extract: vi.fn(async (_f: UploadedFile, _o?: ExtractOptions) => reading(cheapReads)) };
     const ocr = { extractText: vi.fn(async () => TEXT) };
-    const reader = new TemplateInvoiceExtractor(classic, ocr, null, { templates: new MemoryTemplates([t]), words: () => null, renderer: () => null }, cheap);
-    return { read: await reader.extract(upload, { country: international, organizationId: 'org' }), classic, cheap };
+    const templates = new MemoryTemplates([t]);
+    const reader = new TemplateInvoiceExtractor(classic, ocr, null, { templates, words: () => null, renderer: () => null }, cheap);
+    return { read: await reader.extract(upload, { country: international, organizationId: 'org' }), classic, cheap, templates };
   }
 
   it("tells the text model the form's labels", async () => {
@@ -352,5 +358,89 @@ describe('the form guide and the cheaper model', () => {
   it('uses the usual model for a form not trusted yet, or with nothing learned', async () => {
     expect((await read(venus({ timesSent: 1 }), {})).cheap.extract).not.toHaveBeenCalled();
     expect((await read(venus({ guide: EMPTY_GUIDE }), {})).cheap.extract).not.toHaveBeenCalled();
+  });
+
+  it("sets a wrong learned field to what the form prints after its label, instead of reading again, when every check then passes", async () => {
+    const { read: r, classic, templates } = await read(venus(), { totalAmount: 90000000 }, 45000000);
+    expect(classic.extract).not.toHaveBeenCalled();
+    expect(r.data!.totalAmount).toBe(45000000);
+    expect(r.raw).toMatchObject({ template: { match: { outcome: 'used', fixed: ['totalAmount'], cheapModel: true } } });
+    expect(templates.cheap).toEqual([{ id: 'tpl', failed: false }]);
+  });
+
+  it('counts a failed cheaper reading, and reads a form it usually fails with the usual model straight away', async () => {
+    const failed = await read(venus(), { totalAmount: 90000000 });
+    expect(failed.templates.cheap).toEqual([{ id: 'tpl', failed: true }]);
+    const skipped = await read(venus({ cheapReads: 6, cheapFailed: 4 }), {});
+    expect(skipped.cheap.extract).not.toHaveBeenCalled();
+    expect(skipped.classic.extract).toHaveBeenCalledTimes(1);
+    expect(skipped.read.raw).toMatchObject({ template: { match: { outcome: 'used' } } });
+  });
+});
+
+describe('a form that changed: a label gone, not missed by the OCR', () => {
+  // 36 printed words spread over the page, and the total's label among them, printed once.
+  const printed = Array.from({ length: 36 }, (_, i) => ({ text: `label${i}`, x: 0.05 + (i % 6) * 0.15, y: 0.05 + Math.floor(i / 6) * 0.15 }));
+  const total = { text: 'gesamtbetrag', x: 0.6, y: 0.93 };
+  const centre = (w: { text: string; x: number; y: number }) => ({ text: w.text, page: 0, x: w.x + 0.025, y: w.y + 0.01, seen: 3 });
+  const form = template({ vendorKey: 'acme', vendorName: 'ACME GmbH', words: [...printed, total].map(centre), chosen: { totalAmount: { times: 2, label: 'Gesamtbetrag' } } });
+
+  async function read(onPage: { text: string; x: number; y: number }[]) {
+    const image = await sharp({ create: { width: 500, height: 500, channels: 3, background: '#fff' } }).jpeg().toBuffer();
+    const upload = { buffer: image, originalname: 'r.jpg', mimetype: 'image/jpeg', size: image.length } as UploadedFile;
+    const classic = { extract: vi.fn(async () => result({ vendorName: 'ACME GmbH', totalAmount: 100, items: [{ description: 'x', quantity: 1, unitPrice: 100, totalPrice: 100 }] })) };
+    const ocr = { extractText: vi.fn(async () => 'ACME GmbH\nSumme 100,00') };
+    const tesseract: PositionedOcrClient = {
+      readWords: async () => ({ pages: [{ index: 0, width: 500, height: 500, source: 'ocr', text: '', words: onPage.map((w) => word(w.text, w.x, w.y)) }] }),
+      extractText: async () => ''
+    };
+    const reader = new TemplateInvoiceExtractor(classic, ocr, null, { templates: new MemoryTemplates([form]), words: () => tesseract, renderer: () => null });
+    return { read: await reader.extract(upload, { country: international, organizationId: 'org' }), ocr };
+  }
+
+  it('asks the OCR no more when word OCR reads the form well and the label is gone from it', async () => {
+    const { read: r, ocr } = await read(printed);
+    expect(ocr.extractText).toHaveBeenCalledTimes(1);
+    expect(r.raw).toMatchObject({ template: { formChanged: ['Gesamtbetrag'] } });
+  });
+
+  it('asks again when word OCR still sees the label (the OCR missed it)', async () => {
+    const { read: r, ocr } = await read([...printed, total]);
+    expect(ocr.extractText).toHaveBeenCalledTimes(3);
+    expect((r.raw as { template: { formChanged?: unknown } }).template.formChanged).toBeUndefined();
+  });
+
+  it('asks again when word OCR reads too little of the page to tell', async () => {
+    const { ocr } = await read(printed.slice(0, 10));
+    expect(ocr.extractText).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("a PDF made from text: its own words instead of OCR", () => {
+  const TEXT = 'Werkzeug Müller GmbH Rechnung Rechnungsnummer 2026-0412 Datum 07.11.2026 Pos Artikel Menge Einzelpreis Gesamt 1 Schraubendreher 4 12,50 50,00 Gesamtbetrag 50,00 EUR';
+  async function read(source: OcrPage['source']) {
+    const upload = { buffer: Buffer.from('%PDF-1.4 text'), originalname: 'invoice.pdf', mimetype: 'application/pdf', size: 13 } as UploadedFile;
+    const classic = { extract: vi.fn(async (_f: UploadedFile, _o?: ExtractOptions) => result()) };
+    const ocr = { extractText: vi.fn(async () => 'from Mistral OCR') };
+    const tesseract: PositionedOcrClient = {
+      readWords: async () => ({ pages: [{ index: 0, width: 595, height: 842, source, text: TEXT, words: [] }] }),
+      extractText: async () => ''
+    };
+    const reader = new TemplateInvoiceExtractor(classic, ocr, null, { templates: new MemoryTemplates([]), words: () => tesseract, renderer: () => null });
+    const r = await reader.extract(upload, { country: international, organizationId: 'org' });
+    return { r, ocr, classic };
+  }
+
+  it('reads the PDF text, exact and free, and makes no OCR call', async () => {
+    const { r, ocr, classic } = await read('text-layer');
+    expect(ocr.extractText).not.toHaveBeenCalled();
+    expect(classic.extract.mock.calls[0][1]!.ocrText).toBe(TEXT);
+    expect(r.raw).toMatchObject({ template: { textFrom: 'pdf' } });
+  });
+
+  it('uses Mistral OCR for a scanned PDF', async () => {
+    const { r, ocr } = await read('ocr');
+    expect(ocr.extractText).toHaveBeenCalledTimes(1);
+    expect(r.raw).toMatchObject({ template: { textFrom: 'ocr', pdfTextUnused: 'a page without text (scanned)' } });
   });
 });

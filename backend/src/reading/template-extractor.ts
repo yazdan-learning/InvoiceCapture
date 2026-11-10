@@ -32,10 +32,11 @@ import { international } from '../countries/international';
 import { AMOUNTS_UNCHECKED } from '../expenses/adapters/direct-extractor';
 import { ExtractedInvoiceData, ExtractionResult, ExtractOptions, InvoiceExtractor, UploadedFile } from '../expenses/ports';
 import { documentPages } from './page-images';
-import { findTemplate, readPageWords, TemplateMatch } from './template-finder';
+import { pdfText } from './pdf-text';
+import { findTemplate, READABLE_PAGE, readPageWords, TemplateMatch, WORDS_MATCH } from './template-finder';
 import { checkGuidedReading, differences, GuidedOutcome, isTrusted, templateHints, withRuledFields } from './template-guide';
-import { pageLook } from './template-match';
-import { guideRequiredLabels, hasGuide } from './form-guide';
+import { matchWords, pageLook, readableWords, wordKey } from './template-match';
+import { cheapUsuallyFails, guideRequiredLabels, hasGuide, withGuideFields, withoutZeroCharges } from './form-guide';
 import { hasLabel, labelKey, requiredLabels, ruledFields, taxIdsInText, vendorKeysInText } from './templates';
 import type { TemplatesRepository } from './templates.repository';
 
@@ -87,6 +88,28 @@ const OCR_RETRIES = 2;
 
 type FoundTemplate = { match: TemplateMatch; words: () => Promise<OcrPage[] | null> };
 
+/**
+ * The missing labels that are gone from the page rather than missed by the OCR:
+ * word OCR (Tesseract) reads the page well (READABLE_PAGE words, the form's
+ * printed words where the template has them, WORDS_MATCH), and finds none of
+ * a label's distinctive words, which it read on this form before (among the
+ * template's printed words: printed once, in place). Unsure (a poor scan, a
+ * label it never read): none.
+ */
+async function labelsGone(found: FoundTemplate, missing: string[]): Promise<string[]> {
+  const template = found.match.template;
+  const read = await found.words().catch(() => null);
+  if (!read || readableWords(read) < READABLE_PAGE || template.words.length === 0) return [];
+  if (matchWords(template.words, read).score < WORDS_MATCH) return [];
+  const known = new Set(template.words.map((w) => w.text));
+  const onPage = new Set(read.flatMap((p) => p.words.map((w) => wordKey(w.text))));
+  // The label's distinctive words: the ones learned as printed once on the form ("کل" of "هزینه کل"; not "هزینه", printed 4 times).
+  return missing.filter((label) => {
+    const distinctive = label.split(/\s+/).map(wordKey).filter((w) => w.length >= 2 && /\p{L}/u.test(w) && known.has(w));
+    return distinctive.length > 0 && !distinctive.some((w) => onPage.has(w));
+  });
+}
+
 /** Name keys looked up from one document's text at most (a long receipt has many word runs). */
 const MAX_TEXT_KEYS = 2000;
 
@@ -122,6 +145,16 @@ export type TemplateReadingInfo = {
   ocrMissing?: string[];
   /** More OCR calls made because its text lacked one of them. */
   ocrRetries?: number;
+  /**
+   * Labels the form used to print that are gone from this page (word OCR reads the page well, finds the
+   * form's other printed words, but not these, which it read on this form before): the form changed, so
+   * no more OCR calls or image reading for them.
+   */
+  formChanged?: string[];
+  /** Where the text read came from: the PDF's own words (exact, free) or Mistral OCR. */
+  textFrom?: 'pdf' | 'ocr';
+  /** Why a PDF's own text wasn't used (scanned, a scanner app's, broken characters, …). */
+  pdfTextUnused?: string;
 };
 
 const hasGap = (check: ReadingCheck) => check.problems.some((p) => p.code === 'total_mismatch');
@@ -158,14 +191,16 @@ export class TemplateInvoiceExtractor implements InvoiceExtractor {
     upload: UploadedFile,
     organizationId: string | undefined,
     ocrText: string | null,
-    rules: CountryProfile
+    rules: CountryProfile,
+    /** The document's words, when already read (a PDF's own words, read before the OCR). */
+    preRead: OcrPage[] | null = null
   ): Promise<{ match: TemplateMatch; words: () => Promise<OcrPage[] | null> } | null> {
     const guide = this.guide;
     if (!guide || !organizationId) return null;
     // The same page images the review page shows (the stored file), so the template's boxes fit both.
     const pages = await documentPages(upload.buffer, upload.mimetype, guide.renderer());
     if (!pages.length) return null;
-    let read: Promise<OcrPage[] | null> | undefined;
+    let read: Promise<OcrPage[] | null> | undefined = preRead ? Promise.resolve(preRead.slice(0, pages.length)) : undefined;
     const words = () =>
       (read ??= (async () => {
         const ocr = guide.words();
@@ -184,8 +219,8 @@ export class TemplateInvoiceExtractor implements InvoiceExtractor {
     return match ? { match, words } : null;
   }
 
-  private findQuietly(upload: UploadedFile, options: ExtractOptions, ocrText: string | null, rules: CountryProfile): Promise<FoundTemplate | null> {
-    return this.templateFor(upload, options.organizationId, ocrText, rules).catch((err: Error) => {
+  private findQuietly(upload: UploadedFile, options: ExtractOptions, ocrText: string | null, rules: CountryProfile, preRead: OcrPage[] | null = null): Promise<FoundTemplate | null> {
+    return this.templateFor(upload, options.organizationId, ocrText, rules, preRead).catch((err: Error) => {
       console.warn(`template reading: lookup failed: ${err.message}`);
       return null;
     });
@@ -200,8 +235,21 @@ export class TemplateInvoiceExtractor implements InvoiceExtractor {
   private async completeOcrText(file: OcrFile, ocrText: string, found: FoundTemplate | null, info: TemplateReadingInfo): Promise<{ ocrText: string; missing: string[] }> {
     // The labels of the user's rules and the form guide's learned ones: printed on every invoice of the form.
     const labels = found ? [...requiredLabels(found.match.template), ...guideRequiredLabels(found.match.template.guide)] : [];
-    const required = labels.filter((l, i) => labels.findIndex((o) => labelKey(o) === labelKey(l)) === i);
+    let required = labels.filter((l, i) => labels.findIndex((o) => labelKey(o) === labelKey(l)) === i);
     let missing = required.filter((l) => !hasLabel(ocrText, l));
+    // The PDF's own text is exact: a label missing from it is no longer printed (no OCR to ask again).
+    if (info.textFrom === 'pdf') {
+      if (missing.length) info.formChanged = missing;
+      return { ocrText, missing: [] };
+    }
+    // Did the OCR miss it, or is it no longer printed? Word OCR (read anyway, to confirm the form) tells.
+    const gone = missing.length && found ? await labelsGone(found, missing) : [];
+    if (gone.length) {
+      info.formChanged = gone;
+      console.log(`template reading: the form no longer prints ${gone.map((l) => `"${l}"`).join(', ')} (word OCR reads the rest of it): not asked again`);
+      required = required.filter((l) => !gone.includes(l));
+      missing = missing.filter((l) => !gone.includes(l));
+    }
     for (let i = 0; i < OCR_RETRIES && missing.length; i++) {
       const again = await retryStep(() => this.ocr.extractText(file)).catch(() => null);
       if (again === null) break;
@@ -266,7 +314,9 @@ export class TemplateInvoiceExtractor implements InvoiceExtractor {
       };
     };
     const check = (r: ExtractionResult) => checkGuidedReading(r, match, pages, { ocrText, storedAmount: storedAmountFor(r) });
-    const withRules = (r: ExtractionResult) => {
+    const withRules = (given: ExtractionResult) => {
+      // The form's 0 charges are not lines (as on the invoices sent from it).
+      const r = given.data ? { ...given, data: withoutZeroCharges(match.template.guide, given.data) } : given;
       const ruled = withRuledFields(r, match, pages, ocrText, storedAmountFor(r));
       for (const f of ruled.ruled) ruledSet.add(f);
       return ruled.result;
@@ -280,21 +330,40 @@ export class TemplateInvoiceExtractor implements InvoiceExtractor {
       result = plainRuled;
       outcome = { ...base, outcome: 'compared', problems: check(guidedRuled), differences: differences(guidedRuled.data, plainRuled.data) };
     } else {
-      // A trusted form with the user's rules or a learned guide: the cheaper model reads it (checked as always, the usual model on a fall-back).
-      const cheap = !!this.cheap && !options.handwritten && !imageReading && (hasGuide(match.template.guide) || ruledFields(match.template).length > 0);
+      // A trusted form with the user's rules or a learned guide: the cheaper model reads it (checked as always, the
+      // usual model on a fall-back), unless it has usually failed this form's checks.
+      const template = match.template;
+      const cheap =
+        !!this.cheap && !options.handwritten && !imageReading && (hasGuide(template.guide) || ruledFields(template).length > 0) && !cheapUsuallyFails(template);
       const [guided, read] = await Promise.all([readWith(hints, cheap), boxWords()]);
       pages = read;
-      const guidedRuled = withRules(guided);
-      const problems = check(guidedRuled);
+      let guidedRuled = withRules(guided);
+      let problems = check(guidedRuled);
+      // Fix instead of reading again: a learned field the reading got wrong is set to what the form prints after its
+      // label in this OCR text; used when every check then passes (the lines still have to add up to it).
+      let fixed: string[] = [];
+      if (problems.length && guidedRuled.data) {
+        const repaired = withGuideFields(template.guide, guidedRuled.data as unknown as Record<string, unknown>, ocrText, storedAmountFor(guidedRuled), ruledFields(template));
+        if (repaired.fixed.length) {
+          const candidate = { ...guidedRuled, data: repaired.data as unknown as ExtractedInvoiceData };
+          if (!check(candidate).length) {
+            guidedRuled = candidate;
+            fixed = repaired.fixed;
+            problems = [];
+          }
+        }
+      }
       result = problems.length ? withRules(await readWith()) : guidedRuled;
-      outcome = { ...base, outcome: problems.length ? 'fell-back' : 'used', problems, ...(cheap ? { cheapModel: true } : {}) };
+      outcome = { ...base, outcome: problems.length ? 'fell-back' : 'used', problems, ...(cheap ? { cheapModel: true } : {}), ...(fixed.length ? { fixed } : {}) };
+      if (cheap) this.guide?.templates.recordCheapReading(template.id, problems.length > 0).catch(() => undefined);
     }
     if (ruledSet.size) outcome.ruled = [...ruledSet];
     console.log(
       `template reading: ${match.template.vendorName ?? match.template.id} (by ${match.by}): ${outcome.outcome}${outcome.cheapModel ? ' (cheaper model)' : ''}` +
         (outcome.problems.length ? `; problems: ${outcome.problems.join('; ')}` : '') +
         (outcome.differences ? `; differs from the plain reading in: ${outcome.differences.join(', ') || 'nothing'}` : '') +
-        (outcome.ruled ? `; taken from the user's rule: ${outcome.ruled.join(', ')}` : '')
+        (outcome.ruled ? `; taken from the user's rule: ${outcome.ruled.join(', ')}` : '') +
+        (outcome.fixed ? `; set to what the form prints after its label: ${outcome.fixed.join(', ')}` : '')
     );
     return { result, match: outcome };
   }
@@ -323,17 +392,34 @@ export class TemplateInvoiceExtractor implements InvoiceExtractor {
       return tagged(guided.result, { match: guided.match });
     }
 
-    let ocrText: string;
-    try {
-      ocrText = await retryStep(() => this.ocr.extractText(file));
-    } catch {
-      // The classic reader tries the OCR again and reports the failure the usual way.
-      return tagged(await this.classic.extract(read, options));
+    // A PDF made from text: its own words (exact, free) instead of OCR, when they pass the checks (pdf-text.ts).
+    let pdfWords: OcrPage[] | null = null;
+    let ocrText: string | null = null;
+    const wordOcr = upload.mimetype === 'application/pdf' ? this.guide?.words() : null;
+    if (wordOcr) {
+      pdfWords = await wordOcr
+        .readWords({ buffer: upload.buffer, filename: upload.originalname, contentType: upload.mimetype }, { languages: country.ocrLanguages })
+        .then((r) => r.pages)
+        .catch(() => null);
+      const own = pdfText(pdfWords, file);
+      if ('text' in own) {
+        ocrText = own.text;
+        info.textFrom = 'pdf';
+      } else info.pdfTextUnused = own.problem;
+    }
+    if (ocrText === null) {
+      try {
+        ocrText = await retryStep(() => this.ocr.extractText(file));
+        info.textFrom = 'ocr';
+      } catch {
+        // The classic reader tries the OCR again and reports the failure the usual way.
+        return tagged(await this.classic.extract(read, options));
+      }
     }
 
     info.foreignReceipt = country.id === 'IR' && !ARABIC_SCRIPT.test(ocrText);
     const rules: CountryProfile = info.foreignReceipt ? international : country;
-    const found = await this.findQuietly(upload, options, ocrText, rules);
+    const found = await this.findQuietly(upload, options, ocrText, rules, pdfWords);
     const complete = await this.completeOcrText(file, ocrText, found, info);
     ocrText = complete.ocrText;
     const fromText = (hints?: string, cheap = false) => (cheap && this.cheap ? this.cheap : this.classic).extract(read, { ...options, country: rules, ocrText, hints });

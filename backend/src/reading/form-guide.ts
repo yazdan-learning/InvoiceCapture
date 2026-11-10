@@ -25,9 +25,19 @@ export type FormGuide = {
   totalParts: { labels: string[]; seen: number } | null;
   /** Sent invoices without line items. */
   noItems: number;
+  /** Per field the form may not print at all (tax, discount): on how many sent invoices it was empty, of how many. */
+  empty: Record<string, { none: number; of: number }>;
+  /**
+   * Sent invoices whose line items were the total's parts, named as printed (ونوس: "هزینه پایه",
+   * "هزینه مازاد" — form text, not products), and of those, how many left out the parts that were 0.
+   */
+  itemsFromParts: { seen: number; skipZero: number };
 };
 
-export const EMPTY_GUIDE: FormGuide = { sends: 0, labels: {}, notAfter: {}, totalParts: null, noItems: 0 };
+export const EMPTY_GUIDE: FormGuide = { sends: 0, labels: {}, notAfter: {}, totalParts: null, noItems: 0, empty: {}, itemsFromParts: { seen: 0, skipZero: 0 } };
+
+/** Fields a form may not print at all: told so, the model doesn't make one up. */
+const ABSENT_FIELDS = ['taxAmount', 'discountAmount'] as const;
 
 /** A label goes into the prompt and the checks once the sent value followed it on this many invoices … */
 export const GUIDE_AFTER = 2;
@@ -46,7 +56,9 @@ export function guideOf(value: unknown): FormGuide {
     labels: g.labels ?? {},
     notAfter: g.notAfter ?? {},
     totalParts: g.totalParts ?? null,
-    noItems: g.noItems ?? 0
+    noItems: g.noItems ?? 0,
+    empty: g.empty ?? {},
+    itemsFromParts: g.itemsFromParts ?? { seen: 0, skipZero: 0 }
   };
 }
 
@@ -118,14 +130,17 @@ function counted(list: GuideLabel[] | undefined, label: string): GuideLabel[] {
 }
 
 /** The labelled amounts that add up to the total, printed with labels like its own ("هزینه …" with "هزینه کل"). */
-function partsOf(ocrText: string, totalLabel: string, printedTotal: number): string[] | null {
+function partsOf(ocrText: string, totalLabel: string, printedTotal: number): { label: string; cents: number }[] | null {
   const first = labelKey(totalLabel).split(' ')[0];
-  const parts = labelledAmounts(ocrText).filter((a) => labelKey(a.label) !== labelKey(totalLabel) && labelKey(a.label).split(' ')[0] === first);
-  const labels = [...new Set(parts.map((p) => p.label))];
-  if (labels.length < 2 || labels.length !== parts.length) return null;
-  const sum = parts.reduce((s, p) => s + Math.round((printedAmount(p.text) ?? NaN) * 100), 0);
-  return sum === Math.round(printedTotal * 100) ? labels : null;
+  const parts = labelledAmounts(ocrText)
+    .filter((a) => labelKey(a.label) !== labelKey(totalLabel) && labelKey(a.label).split(' ')[0] === first)
+    .map((a) => ({ label: a.label, cents: Math.round((printedAmount(a.text) ?? NaN) * 100) }));
+  if (new Set(parts.map((p) => labelKey(p.label))).size !== parts.length || parts.length < 2) return null;
+  return parts.reduce((s, p) => s + p.cents, 0) === Math.round(printedTotal * 100) ? parts : null;
 }
+
+/** A label without its unit ("هزینه پایه (ریال)" → "هزینه پایه"), to compare with a line item's name. */
+const bare = (label: string) => labelKey(label).replace(/\s*\([^)]*\)\s*$/, '').trim();
 
 /** The guide after one more invoice sent from the form. */
 export function learnGuide(before: FormGuide, invoice: SentInvoice): FormGuide {
@@ -147,12 +162,28 @@ export function learnGuide(before: FormGuide, invoice: SentInvoice): FormGuide {
     if (field === 'totalAmount' && label && found.printed !== null) {
       const parts = partsOf(invoice.ocrText, label, found.printed);
       if (parts) {
-        const same = before.totalParts && before.totalParts.labels.map(labelKey).join('|') === parts.map(labelKey).join('|');
-        guide.totalParts = { labels: parts, seen: same ? before.totalParts!.seen + 1 : 1 };
+        const labels = parts.map((p) => p.label);
+        const same = before.totalParts && before.totalParts.labels.map(labelKey).join('|') === labels.map(labelKey).join('|');
+        guide.totalParts = { labels, seen: same ? before.totalParts!.seen + 1 : 1 };
+        // The line items sent were these parts by name: the form's charges are its lines.
+        const names = invoice.itemNames.map(bare);
+        if (names.length && names.every((n) => parts.some((p) => bare(p.label) === n))) {
+          const nonZero = parts.filter((p) => p.cents !== 0).length;
+          const skippedZero = parts.length > nonZero && names.length === nonZero;
+          const was = guideOf(before).itemsFromParts;
+          guide.itemsFromParts = { seen: was.seen + 1, skipZero: was.skipZero + (skippedZero ? 1 : 0) };
+        }
       }
     }
   }
   if (!invoice.itemNames.length) guide.noItems = before.noItems + 1;
+  guide.empty = { ...guideOf(before).empty };
+  for (const field of ABSENT_FIELDS) {
+    const value = invoice.values[field];
+    const none = !present(value) || Number(value) === 0;
+    const was = guide.empty[field] ?? { none: 0, of: 0 };
+    guide.empty[field] = { none: was.none + (none ? 1 : 0), of: was.of + 1 };
+  }
   return guide;
 }
 
@@ -203,12 +234,58 @@ export function guideLines(given: FormGuide | undefined, skip: string[] = []): s
     }
     lines.push(line);
   }
+  // What the form doesn't print, on every invoice sent: said, so the model doesn't make one up.
+  const absent = ABSENT_FIELDS.filter((f) => !skip.includes(f) && !learnedLabel(guide, f)).filter((f) => {
+    const e = guide.empty[f];
+    return e && e.of >= GUIDE_AFTER && e.none === e.of;
+  });
+  if (absent.length) {
+    const of = Math.min(...absent.map((f) => guide.empty[f].of));
+    lines.push(`- ${absent.map((f) => NAMES[f]).join(' and ')}: this form has printed none on its last ${of} invoices: leave ${absent.length > 1 ? 'them' : 'it'} empty unless this one clearly prints one.`);
+  }
+  // Its line items, when they were the total's parts by name (form text, so it can be said).
+  const items = guide.itemsFromParts;
+  if (guide.totalParts && items.seen >= GUIDE_AFTER) {
+    const names = guide.totalParts.labels.map((l) => `"${bare(l)}"`).join(', ');
+    lines.push(`- items: one line per charge printed with the total (${names}), named as printed, with its amount${items.skipZero >= GUIDE_AFTER ? '; leave out the charges that are 0' : ''}.`);
+  }
   // noItems is not said: told so, the model leaves lines out, and the checks need them (the charges are its lines).
   return lines;
 }
 
 /** The learned labels the OCR text of an invoice of the form should have (printed on every one): a text without one missed part of the page. */
 export const guideRequiredLabels = (guide: FormGuide | undefined): string[] => (['totalAmount', 'invoiceNumber', 'invoiceDate'] as const).map((f) => learnedLabel(guide, f)).filter((l): l is string => !!l);
+
+/** What the form prints after each learned label in this document's OCR text: the text, and the value it stands for (null: not readable as one). */
+function printedValues(
+  guide: FormGuide | undefined,
+  ocrText: string | null,
+  storedAmount: (printed: string) => number | null,
+  skip: string[]
+): { field: GuideField; label: string; text: string; value: number | string | null }[] {
+  if (!ocrText) return [];
+  const found: { field: GuideField; label: string; text: string; value: number | string | null }[] = [];
+  for (const field of guidedFields(guide)) {
+    if (skip.includes(field)) continue;
+    const label = learnedLabel(guide, field)!;
+    const text = valueAfter(ocrText, label);
+    if (!text) continue;
+    const kind = kindOf(field);
+    const value = kind === 'amount' ? storedAmount(text) : kind === 'date' ? printedDate(text) : norm(text) ? text : null;
+    found.push({ field, label, text, value });
+  }
+  return found;
+}
+
+const norm = (s: unknown) => findableText(String(s ?? '')).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+
+/** Whether a read value is the printed one. */
+function same(field: GuideField, value: number | string, read: unknown): boolean {
+  const kind = kindOf(field);
+  if (kind === 'amount') return Math.round(Number(value) * 100) === Math.round(Number(read ?? NaN) * 100);
+  if (kind === 'date') return value === String(read ?? '').slice(0, 10);
+  return norm(value) === norm(read);
+}
 
 /**
  * Where a guided reading disagrees with what the form prints after a learned
@@ -222,27 +299,47 @@ export function guideProblems(
   storedAmount: (printed: string) => number | null,
   skip: string[] = []
 ): string[] {
-  if (!ocrText) return [];
-  const problems: string[] = [];
-  for (const field of guidedFields(guide)) {
-    if (skip.includes(field)) continue;
-    const label = learnedLabel(guide, field)!;
-    const text = valueAfter(ocrText, label);
-    if (!text) continue;
-    const read = data[NAMES[field]];
-    const kind = kindOf(field);
-    let agrees: boolean | null;
-    if (kind === 'amount') {
-      const printed = storedAmount(text);
-      agrees = printed === null ? null : Math.round(printed * 100) === Math.round(Number(read ?? NaN) * 100);
-    } else if (kind === 'date') {
-      const printed = printedDate(text);
-      agrees = printed === null ? null : printed === String(read ?? '').slice(0, 10);
-    } else {
-      const norm = (s: unknown) => findableText(String(s ?? '')).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
-      agrees = norm(text) === '' ? null : norm(text) === norm(read);
-    }
-    if (agrees === false) problems.push(`${field}: the form prints "${text}" after "${label}"`);
+  return printedValues(guide, ocrText, storedAmount, skip)
+    .filter((p) => p.value !== null && !same(p.field, p.value, data[NAMES[p.field]]))
+    .map((p) => `${p.field}: the form prints "${p.text}" after "${p.label}"`);
+}
+
+/**
+ * The reading with each learned field set to what the form prints after its
+ * label (fix instead of a second reading: free and exact). Returns the fields it changed.
+ */
+export function withGuideFields(
+  guide: FormGuide | undefined,
+  data: Record<string, unknown>,
+  ocrText: string | null,
+  storedAmount: (printed: string) => number | null,
+  skip: string[] = []
+): { data: Record<string, unknown>; fixed: GuideField[] } {
+  const fixed: GuideField[] = [];
+  const next = { ...data };
+  for (const p of printedValues(guide, ocrText, storedAmount, skip)) {
+    if (p.value === null || same(p.field, p.value, data[NAMES[p.field]])) continue;
+    next[NAMES[p.field]] = p.value;
+    fixed.push(p.field);
   }
-  return problems;
+  return { data: next, fixed };
+}
+
+/** The cheaper model is judged on a form after this many readings of it. */
+export const CHEAP_JUDGED_AFTER = 4;
+
+/** Whether the cheaper model usually fails this form's checks (more than half of its readings, after CHEAP_JUDGED_AFTER). */
+export const cheapUsuallyFails = (t: { cheapReads?: number; cheapFailed?: number }) =>
+  (t.cheapReads ?? 0) >= CHEAP_JUDGED_AFTER && (t.cheapFailed ?? 0) * 2 > (t.cheapReads ?? 0);
+
+/**
+ * The reading without the form's 0 charges as lines, when the invoices sent from
+ * it left them out (the model keeps them even when told): done in code, exact.
+ */
+export function withoutZeroCharges<T extends { items: { description: string; totalPrice: number | null }[] }>(given: FormGuide | undefined, data: T): T {
+  const guide = guideOf(given);
+  if (!guide.totalParts || guide.itemsFromParts.skipZero < GUIDE_AFTER) return data;
+  const charges = new Set(guide.totalParts.labels.map(bare));
+  const items = data.items.filter((i) => !(charges.has(bare(i.description ?? '')) && Math.round((i.totalPrice ?? 0) * 100) === 0));
+  return items.length === data.items.length || !items.length ? data : { ...data, items };
 }

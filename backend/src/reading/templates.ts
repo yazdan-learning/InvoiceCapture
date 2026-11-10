@@ -33,6 +33,11 @@ export type StoredTemplate = TemplateLayout & {
   chosen: Record<string, ChosenField>;
   /** What the form prints before each value, learned from every sent invoice (form-guide.ts). */
   guide: FormGuide;
+  /** Short hashes of the receipts learned from (the same one sent again teaches nothing); absent = none. */
+  learnedFrom?: string[];
+  /** The cheaper model's readings of this form, and how many failed a check. */
+  cheapReads?: number;
+  cheapFailed?: number;
 };
 
 /**

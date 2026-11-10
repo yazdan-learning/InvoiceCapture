@@ -278,4 +278,6 @@ export type GuidedOutcome = {
   ruled?: string[];
   /** The guided reading was made with the cheaper model (LLM_MODEL_TEMPLATE). */
   cheapModel?: boolean;
+  /** Fields the guided reading got wrong, set to what the form prints after their learned label (no second reading). */
+  fixed?: string[];
 };

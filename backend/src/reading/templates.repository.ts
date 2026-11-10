@@ -25,18 +25,29 @@ const toStored = (row: TemplateRow): StoredTemplate => ({
   chosen: Object.fromEntries(
     Object.entries((row.chosen as Record<string, ChosenField | number> | null) ?? {}).map(([f, c]) => [f, typeof c === 'number' ? { times: c, label: null } : c])
   ),
-  guide: guideOf(row.guide)
+  guide: guideOf(row.guide),
+  learnedFrom: (row.learnedFrom as string[] | null) ?? [],
+  cheapReads: row.cheapReads,
+  cheapFailed: row.cheapFailed
 });
 
 /** What a template learns from the form besides its boxes. */
-export type FormFeatures = { words: TemplateWord[]; samples: number; look: PageLook | null; chosen: Record<string, ChosenField>; guide?: FormGuide };
+export type FormFeatures = {
+  words: TemplateWord[];
+  samples: number;
+  look: PageLook | null;
+  chosen: Record<string, ChosenField>;
+  guide?: FormGuide;
+  learnedFrom?: string[];
+};
 
-const formData = ({ words, samples, look, chosen, guide }: FormFeatures) => ({
+const formData = ({ words, samples, look, chosen, guide, learnedFrom }: FormFeatures) => ({
   words,
   samples,
   look: look ?? Prisma.DbNull,
   chosen,
-  ...(guide ? { guide: guide as unknown as Prisma.InputJsonValue } : {})
+  ...(guide ? { guide: guide as unknown as Prisma.InputJsonValue } : {}),
+  ...(learnedFrom ? { learnedFrom } : {})
 });
 
 /** The vendor keys to look templates up by: one of each from a reading, or every one an invoice's text could hold. */
@@ -82,24 +93,32 @@ export const templatesRepository = {
   },
 
   async create(template: NewTemplate): Promise<StoredTemplate> {
-    const { pageAspects, fields, items, words, samples, look, chosen, guide, ...rest } = template;
+    const { pageAspects, fields, items, words, samples, look, chosen, guide, learnedFrom, ...rest } = template;
     return toStored(
       await prisma.invoiceTemplate.create({
-        data: { ...rest, pageAspects, firstPageAspect: pageAspects[0] ?? null, fields, items: items ?? Prisma.DbNull, ...formData({ words, samples, look, chosen, guide }) }
+        data: { ...rest, pageAspects, firstPageAspect: pageAspects[0] ?? null, fields, items: items ?? Prisma.DbNull, ...formData({ words, samples, look, chosen, guide, learnedFrom }) }
       })
     );
   },
 
   /** The latest layout (and any vendor key it lacked) from an invoice just sent. */
   async update(id: string, change: TemplateLayout & FormFeatures & { vendorTaxId?: string | null; vendorKey?: string | null; vendorName?: string | null }): Promise<StoredTemplate> {
-    const { pageAspects, fields, items, words, samples, look, chosen, guide, ...keys } = change;
+    const { pageAspects, fields, items, words, samples, look, chosen, guide, learnedFrom, ...keys } = change;
     const data = Object.fromEntries(Object.entries(keys).filter(([, v]) => v !== undefined && v !== null));
     return toStored(
       await prisma.invoiceTemplate.update({
         where: { id },
-        data: { ...data, pageAspects, firstPageAspect: pageAspects[0] ?? null, fields, items: items ?? Prisma.DbNull, ...formData({ words, samples, look, chosen, guide }) }
+        data: { ...data, pageAspects, firstPageAspect: pageAspects[0] ?? null, fields, items: items ?? Prisma.DbNull, ...formData({ words, samples, look, chosen, guide, learnedFrom }) }
       })
     );
+  },
+
+  /** The cheaper model read an invoice of this form; `failed`: its reading failed a check (read again with the usual model). */
+  async recordCheapReading(id: string, failed: boolean): Promise<void> {
+    await prisma.invoiceTemplate.update({
+      where: { id },
+      data: { cheapReads: { increment: 1 }, ...(failed ? { cheapFailed: { increment: 1 } } : {}) }
+    });
   },
 
   /** An invoice that used the template was sent: one more use, and one more correction when its boxes had to be moved. */
