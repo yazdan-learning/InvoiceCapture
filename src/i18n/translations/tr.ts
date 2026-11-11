@@ -282,7 +282,22 @@ const tr: Translations = {
     invoiceReader: 'Faturaları okuyan',
     invoiceReaderClassic: 'Klasik (kararlı)',
     invoiceReaderTemplate: 'Şablon tabanlı (beta)',
-    invoiceReaderHint: 'Şablon tabanlı mod, her alanın fotoğrafta nereden okunduğunu gösterir ve fotoğraftan değer seçmenizi sağlar. Klasik, kararlı okumadır; buradan istediğiniz zaman geri dönebilirsiniz.'
+    invoiceReaderHint: 'Şablon tabanlı mod, her alanın fotoğrafta nereden okunduğunu gösterir ve fotoğraftan değer seçmenizi sağlar. Klasik, kararlı okumadır; buradan istediğiniz zaman geri dönebilirsiniz.',
+    aiSection: 'Yapay zekâ modelleri',
+    aiHint: 'Her adımın hangi dış yapay zekâ hizmetini kullandığı. API anahtarları sunucuda kalır; yalnızca anahtarı olan sağlayıcılar sunulur. Değişiklikler bir sonraki yüklemede geçerli olur.',
+    aiServerDefault: 'Sunucu ayarı ({model})',
+    aiOff: 'Kapalı',
+    aiModel: 'Model',
+    aiOCR: 'OCR (sayfadan metne)',
+    aiOCRHint: 'Fotoğrafı veya PDF’i metne çevirir. Alan kutuları için kendi Tesseract hizmetimiz ücretsizdir ve burada ayarlanmaz.',
+    aiREADING: 'Ana okuma modeli',
+    aiREADINGHint: 'Fatura alanlarını OCR metninden okur, bir şey tutmadığında fotoğrafla yeniden okur ve hammaddeleri eşleştirir.',
+    aiTEMPLATE: 'Bilinen form modeli (daha ucuz)',
+    aiTEMPLATEHint: 'Uygulamanın öğrendiği güvenilir formları okur. Sonuç kontrol edilir, gerekirse ana modele dönülür.',
+    aiVISION: 'Görsel model',
+    aiVISIONHint: 'El yazısını ve OCR’nin kaçırdığı sayfaları okur, Tesseract yapamadığında alan kutularını yerleştirir ve “Yapay zekâ ile oku”yu çalıştırır.',
+    aiLARGE: 'Son deneme modeli',
+    aiLARGEHint: 'Bir okuma hâlâ tutmadığında büyük bir modelle bir deneme daha. Varsayılan olarak kapalı.'
   },
 
   review: {

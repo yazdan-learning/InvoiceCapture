@@ -505,9 +505,7 @@ export function DocumentViewer({
                         active ? 'doc-box--active' : '',
                         movable ? 'doc-box--movable' : '',
                         drag?.field === box.field && drag.moved ? 'doc-box--dragging' : '',
-                        !active && box.field === hoverField ? 'doc-box--hover' : '',
-                        // At the top of the page the label goes under the box, not off the page.
-                        region.y < 0.05 ? 'doc-box--tag-below' : ''
+                        !active && box.field === hoverField ? 'doc-box--hover' : ''
                       ]
                         .filter(Boolean)
                         .join(' ')}
@@ -530,7 +528,6 @@ export function DocumentViewer({
                       onPointerCancel={movable ? () => setDrag(null) : undefined}
                       onKeyDown={movable ? nudge(box) : undefined}
                     >
-                      {active && <span className="doc-box-tag">{labelFor(box.field)}</span>}
                       {movable &&
                         HANDLES.map((handle) => (
                           <span key={handle} className={`doc-handle doc-handle--${handle}`} onPointerDown={startDrag(box, handle)} aria-hidden="true" />

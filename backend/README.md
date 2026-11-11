@@ -210,6 +210,8 @@ applied once at the router mount in `app.ts`, not per-route):
 |---|---|---|
 | GET | `/api/organization/settings` | current org settings (`mileageRatePerKm`, `defaultCurrency`, `defaultLanguage`, `country`, `modules`, `accountingConnector`, plus the `supported*` lists for each) |
 | PATCH | `/api/organization/settings` | update org settings — any one field, or several at once (incl. `currencyConverter`, `materialMatcher`, `invoiceReader`) |
+| GET | `/api/organization/ai-models` | Settings → AI models: providers with a key, and per use case its choice, `.env` default and suggested models |
+| PUT | `/api/organization/ai-models` | `{ choices: { OCR?, READING?, TEMPLATE?, VISION?, LARGE? } }` — replaces all; a left-out use case goes back to `.env`; choices the server has no key for are dropped |
 
 ## Multi-currency
 
@@ -229,6 +231,29 @@ untouched. Editing `currency`/`totalAmount`/etc. afterward via `PATCH` is a plai
 and does **not** retrigger conversion — conversion only ever happens automatically once, at
 extraction time. Mileage expenses are always tagged with the org's `defaultCurrency`
 directly (no conversion needed — the rate-per-km is already denominated in it).
+
+## AI models
+
+Every outside AI call goes through `src/ai/models/` (`aiModels`), for the whole app — each customer runs
+its own instance, so this is not per organization. Settings → AI models (admins) picks a provider and model
+per use case; no choice (no `AiModelSetting` row) = the `.env` setup, as before.
+
+| Use case | What it does | `.env` default | Alternatives offered |
+|---|---|---|---|
+| `OCR` | page → text | `MISTRAL_OCR_MODEL` | Scaleway `lightonocr-3-0.8b` (`PdfChatOcr`: PDF only, a photo is sent as a one-page A4-sized PDF) |
+| `READING` | structuring, re-read with the photo, material matching | `LLM_MODEL_FAST` | Scaleway Qwen 3.6, gpt-oss-120b, Mistral Medium 3.5, DeepSeek |
+| `TEMPLATE` | trusted known forms (cheaper; can be off) | `LLM_MODEL_TEMPLATE` | Scaleway Mistral Small 3.2, gpt-oss-120b |
+| `VISION` | handwriting, image fallback, field boxes when Tesseract places under half, "Read with AI" | `VISION_*` | Scaleway Qwen 3.6 / 3.8 / 3.5-397b |
+| `LARGE` | last look at a reading that doesn't add up (can be off) | `LLM_MODEL_LARGE` | Scaleway Qwen 3.5-397b |
+
+- Keys only in `.env`: `MISTRAL_API_KEY`, `GEMINI_API_KEY` (or `VISION_API_KEY` with Google's
+  `VISION_BASE_URL`), `SCALEWAY_API_KEY`. A provider without a key isn't offered; a saved choice whose key
+  is later removed falls back to `.env`.
+- A save bumps `aiModels.version`; the extractor in `expenses.routes.ts` is built again on the next upload,
+  so no restart. `server.ts` loads the saved choices at start-up.
+- `reasoning_effort` per model (`catalog.ts`): Qwen `none` (otherwise it thinks away the whole answer
+  budget and returns nothing), gpt-oss `low` (refuses `none`), Gemini `VISION_REASONING_EFFORT`, Mistral none.
+- Tesseract (`TESSERACT_URL`) is ours and free; it isn't in this list.
 
 ## Accounting systems
 

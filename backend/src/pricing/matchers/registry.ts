@@ -1,5 +1,5 @@
 import { env } from '../../config/env';
-import { OpenAiCompatibleLlm } from '../../ai/gateway/openai-compatible';
+import { aiModels } from '../../ai/models';
 import { MaterialMatcher } from '../ports';
 import { LlmMaterialMatcher } from './llm-matcher';
 import { JevMaterialMatcher } from './jev-matcher';
@@ -18,8 +18,8 @@ export const MATERIAL_MATCHER_NAMES: Record<MaterialMatcherId, string> = {
 };
 
 // Built per call: a missing key then fails the match (with a message the
-// reviewer sees), not the boot or the settings page.
-const llm = () => new LlmMaterialMatcher(new OpenAiCompatibleLlm({ ...env.llm, timeoutMs: env.aiTimeoutMs }));
+// reviewer sees), not the boot or the settings page. The LLM is the main reading model (Settings → AI models).
+const llm = () => new LlmMaterialMatcher(aiModels.reading());
 const jev = () => new JevMaterialMatcher(env.matching.jev);
 
 const MATCHERS: Record<MaterialMatcherId, () => MaterialMatcher> = {

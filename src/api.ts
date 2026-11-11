@@ -589,6 +589,43 @@ export async function updateOrganizationSettings(
   return parseJsonOrThrow(response);
 }
 
+// ─── Settings → AI models (admins; the whole app) ───
+
+export type AiUseCaseId = 'OCR' | 'READING' | 'TEMPLATE' | 'VISION' | 'LARGE';
+/** provider: MISTRAL / GOOGLE / SCALEWAY, or OFF; no choice = the server's .env setup. */
+export type AiModelChoice = { provider: string; model?: string };
+
+export type AiModelSettings = {
+  providers: { id: string; name: string }[];
+  useCases: {
+    id: AiUseCaseId;
+    choice: AiModelChoice | null;
+    /** The model used without a choice ("" = off). */
+    serverDefault: string;
+    canTurnOff: boolean;
+    providers: string[];
+    suggestions: Record<string, string[]>;
+  }[];
+};
+
+export async function getAiModelSettings(apiBaseUrl = defaultBaseUrl): Promise<AiModelSettings> {
+  const response = await fetch(apiUrl('/api/organization/ai-models', apiBaseUrl), { headers: authHeaders() });
+  return parseJsonOrThrow(response);
+}
+
+/** Replaces all choices: a use case left out goes back to the server's setup. */
+export async function updateAiModelSettings(
+  choices: Partial<Record<AiUseCaseId, AiModelChoice>>,
+  apiBaseUrl = defaultBaseUrl
+): Promise<AiModelSettings> {
+  const response = await fetch(apiUrl('/api/organization/ai-models', apiBaseUrl), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ choices })
+  });
+  return parseJsonOrThrow(response);
+}
+
 // ─── Raw-material pricing (RAW_MATERIAL_PRICING module, accountants and admins) ───
 
 export type IndexSeriesOption = { id: string; label: string; depth: number };

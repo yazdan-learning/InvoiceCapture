@@ -59,6 +59,20 @@ export const env = {
     apiKey: process.env.MISTRAL_API_KEY || '',
     model: process.env.MISTRAL_OCR_MODEL || 'mistral-ocr-latest'
   },
+  // The providers Settings → AI models can switch each use case to (backend/src/ai/models/). A provider
+  // shows up there only when its key is set. Without a choice there, the settings above are used.
+  aiProviders: {
+    MISTRAL: { baseUrl: process.env.MISTRAL_BASE_URL || 'https://api.mistral.ai/v1', apiKey: process.env.MISTRAL_API_KEY || '' },
+    // Gemini's OpenAI-compatible endpoint; VISION_API_KEY counts when VISION_BASE_URL is Google's (the default).
+    GOOGLE: {
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      apiKey:
+        process.env.GEMINI_API_KEY ||
+        ((process.env.VISION_BASE_URL || 'generativelanguage.googleapis.com').includes('generativelanguage.googleapis.com') ? process.env.VISION_API_KEY || '' : '')
+    },
+    // Scaleway Generative APIs (Paris): Qwen, gpt-oss, Mistral, Gemma, LightOnOCR; accepts customers in Iran.
+    SCALEWAY: { baseUrl: process.env.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1', apiKey: process.env.SCALEWAY_API_KEY || '' }
+  },
   // Accounting systems purchase invoices can be sent to (Settings → Accounting
   // system). Only needed by the organizations that pick that system.
   accounting: {

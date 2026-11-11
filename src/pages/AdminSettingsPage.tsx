@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { CountryOption, getOrganizationSettings, updateOrganizationSettings } from '../api';
+import { AiModelSettings, CountryOption, getAiModelSettings, getOrganizationSettings, updateAiModelSettings, updateOrganizationSettings } from '../api';
+import { AiChoiceDraft, AiModelsSection } from '../components/AiModelsSection';
 import { useCountry } from '../country/CountryContext';
 import { useModules } from '../workspace/ModulesContext';
 import { AppModule } from '../types';
@@ -29,9 +30,18 @@ export function AdminSettingsPage() {
   const [materialMatchers, setMaterialMatchers] = useState<{ id: string; name: string }[]>([]);
   const [invoiceReader, setInvoiceReader] = useState('CLASSIC');
   const [invoiceReaders, setInvoiceReaders] = useState<{ id: string; name: string }[]>([]);
+  const [aiSettings, setAiSettings] = useState<AiModelSettings | null>(null);
+  const [aiChoices, setAiChoices] = useState<AiChoiceDraft>({});
   const [saving, setSaving] = useState(false);
 
+  const showAiSettings = (settings: AiModelSettings) => {
+    setAiSettings(settings);
+    setAiChoices(Object.fromEntries(settings.useCases.filter((u) => u.choice).map((u) => [u.id, u.choice!])));
+  };
+
   useEffect(() => {
+    // The AI models are a section of their own: if they can't be read, the rest of the page still works.
+    getAiModelSettings().then(showAiSettings).catch(() => setAiSettings(null));
     getOrganizationSettings()
       .then((settings) => {
         setMileageRatePerKm(String(settings.mileageRatePerKm));
@@ -112,6 +122,7 @@ export function AdminSettingsPage() {
       setCurrencyConverter(updated.currencyConverter);
       setMaterialMatcher(updated.materialMatcher);
       setInvoiceReader(updated.invoiceReader);
+      if (aiSettings) showAiSettings(await updateAiModelSettings(aiChoices));
       reloadCountry();
       reloadModules();
       setSuccessMessage(t('adminSettings.saved'));
@@ -217,6 +228,8 @@ export function AdminSettingsPage() {
                 <p className="field-hint">{t('adminSettings.materialMatcherHint')}</p>
               </div>
             )}
+
+            {aiSettings && <AiModelsSection settings={aiSettings} choices={aiChoices} onChange={setAiChoices} />}
 
             <div className="form-section">
               <h3>{t('adminSettings.countrySection')}</h3>

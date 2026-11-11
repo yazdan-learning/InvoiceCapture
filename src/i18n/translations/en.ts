@@ -294,7 +294,22 @@ const en = {
     invoiceReader: 'Read invoices with',
     invoiceReaderClassic: 'Classic (stable)',
     invoiceReaderTemplate: 'Template-guided (beta)',
-    invoiceReaderHint: 'Template-guided shows on the photo where each field was read and lets you pick a value from the photo. Classic is the stable reading; switch back here at any time.'
+    invoiceReaderHint: 'Template-guided shows on the photo where each field was read and lets you pick a value from the photo. Classic is the stable reading; switch back here at any time.',
+    aiSection: 'AI models',
+    aiHint: 'Which outside AI service each step uses. The API keys stay on the server; only providers with a key are offered. Changes apply to the next upload.',
+    aiServerDefault: 'Server setup ({model})',
+    aiOff: 'Off',
+    aiModel: 'Model',
+    aiOCR: 'OCR (page to text)',
+    aiOCRHint: 'Turns the photo or PDF into text. Our own Tesseract service for the field boxes is free and not set here.',
+    aiREADING: 'Main reading model',
+    aiREADINGHint: 'Reads the invoice fields from the OCR text, re-reads with the photo when something does not add up, and matches raw materials.',
+    aiTEMPLATE: 'Known-form model (cheaper)',
+    aiTEMPLATEHint: 'Reads trusted forms the app has learned. Its reading is checked and falls back to the main model.',
+    aiVISION: 'Vision model',
+    aiVISIONHint: 'Reads handwriting and pages the OCR misses, places field boxes when Tesseract cannot, and runs “Read with AI”.',
+    aiLARGE: 'Last-look model',
+    aiLARGEHint: 'One more try with a big model when a reading still does not add up. Off by default.'
   },
 
   // ===== Expense review page =====

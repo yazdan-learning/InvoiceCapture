@@ -10,8 +10,7 @@ import { createExpensesService } from './expenses.service';
 import { N8nInvoiceExtractor } from './adapters/n8n-extractor';
 import { DirectInvoiceExtractor } from './adapters/direct-extractor';
 import { ReaderSwitchExtractor, TemplateInvoiceExtractor } from '../reading/template-extractor';
-import { MistralOcr } from '../ai/gateway/mistral-ocr';
-import { OpenAiCompatibleLlm } from '../ai/gateway/openai-compatible';
+import { aiModels } from '../ai/models';
 import { TesseractOcr } from '@yazdan-learning/ai';
 import { LocalDiskFileStorage } from './adapters/local-disk-storage';
 import { S3FileStorage } from './adapters/s3-file-storage';
@@ -58,36 +57,34 @@ const fileStorage: FileStorage =
 // printed words, and drawing PDFs made from text as page images. Absent: the vision model / no word OCR.
 const wordOcr = env.tesseract.url ? new TesseractOcr({ baseUrl: env.tesseract.url, token: env.tesseract.token, languages: env.tesseract.languages, timeoutMs: env.tesseract.timeoutMs }) : null;
 
+// The OCR and language models come from Settings → AI models (else the .env setup): the readers are built
+// again after a change there, so a switch takes effect on the next upload without a restart.
 function directExtractor(): InvoiceExtractor {
-  const ocr = new MistralOcr({ ...env.ocr, timeoutMs: env.aiTimeoutMs });
-  const classic = new DirectInvoiceExtractor(
-    ocr,
-    new OpenAiCompatibleLlm({ ...env.llm, timeoutMs: env.aiTimeoutMs }),
-    env.vision.apiKey ? new OpenAiCompatibleLlm({ ...env.vision, models: { fast: env.vision.model, smart: env.vision.model } }) : undefined
-  );
+  const ocr = aiModels.ocr();
+  const vision = aiModels.vision();
+  const classic = new DirectInvoiceExtractor(ocr, aiModels.reading(), vision ?? undefined);
   // TEMPLATE organizations: the classic reading plus the shared checks (reading/template-extractor.ts).
-  const large = env.llm.largeModel
-    ? new OpenAiCompatibleLlm({ ...env.llm, models: { fast: env.llm.largeModel, smart: env.llm.largeModel }, timeoutMs: env.aiTimeoutMs })
-    : null;
+  const large = aiModels.large();
   // TEMPLATE reads a shop app's long receipt in pieces (OCR shrinks a page that tall); CLASSIC reads it whole as before.
   // The template-guided reader looks up invoice templates before reading (and guides the reading with them).
   // When the OCR keeps missing what a known form always prints, the vision model reads the page image.
-  const vision = env.vision.apiKey ? new OpenAiCompatibleLlm({ ...env.vision, models: { fast: env.vision.model, smart: env.vision.model } }) : null;
   const guide = { templates: templatesRepository, words: () => wordOcr, renderer: () => wordOcr, vision: () => vision };
-  // A trusted form with something learned to go by is read with the cheaper model (LLM_MODEL_TEMPLATE), when set.
-  const model = env.llm.templateModel;
-  const cheap = model
-    ? new DirectInvoiceExtractor(
-        ocr,
-        new OpenAiCompatibleLlm({ ...env.llm, models: { fast: model, smart: model }, timeoutMs: env.aiTimeoutMs }),
-        vision ?? undefined
-      )
-    : null;
+  // A trusted form with something learned to go by is read with the cheaper model (AI models → known forms), when set.
+  const small = aiModels.template();
+  const cheap = small ? new DirectInvoiceExtractor(ocr, small, vision ?? undefined) : null;
   return new ReaderSwitchExtractor(classic, new TemplateInvoiceExtractor(classic, new TallImageOcr(ocr), large, guide, cheap));
 }
 
+let direct: { version: number; extractor: InvoiceExtractor } | null = null;
 const extractor: InvoiceExtractor =
-  env.invoiceExtractor === 'n8n' ? new N8nInvoiceExtractor({ baseUrl: env.n8nBaseUrl, extractPath: env.n8nExtractPath }) : directExtractor();
+  env.invoiceExtractor === 'n8n'
+    ? new N8nInvoiceExtractor({ baseUrl: env.n8nBaseUrl, extractPath: env.n8nExtractPath })
+    : {
+        extract(file, options) {
+          if (direct?.version !== aiModels.version) direct = { version: aiModels.version, extractor: directExtractor() };
+          return direct.extractor.extract(file, options);
+        }
+      };
 
 const expensesService = createExpensesService({
   extractor,
@@ -110,10 +107,7 @@ const readingService = createReadingService({
   fileStorage,
   words: () => wordOcr,
   renderer: () => wordOcr,
-  vision: () =>
-    env.vision.apiKey
-      ? new OpenAiCompatibleLlm({ ...env.vision, models: { fast: env.vision.model, smart: env.vision.model } })
-      : new OpenAiCompatibleLlm({ ...env.llm, timeoutMs: env.aiTimeoutMs })
+  vision: () => aiModels.vision() ?? aiModels.reading()
 });
 
 export const expensesRouter = Router();

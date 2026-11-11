@@ -57,6 +57,10 @@ rows; to inspect data, run a small `tsx` script with the Prisma client.
   invoices in one file; small-photo enlarging, tall images read in pieces, VAT-code fix, tax and net from the VAT table, foreign receipts, total/payment lines in the common European languages, line checks, field
   boxes (Tesseract word positions on open via `TESSERACT_URL`, one vision-model call only when they place under half — Persian scans, handwriting; the user draws, moves, resizes or removes any box; a drawn box fills its field from the words inside it, free; "Read with AI" is the only other model call on the review page), invoice templates (learned on send, shared across organizations as layout only; found before the reading by vendor (from the OCR text), else the form's printed words, else the page's look, and aligned to the scan; the reading gets the template's hints — the user's rules and the form guide, the label before each value learned on every send — and is checked, falling back to the plain reading; a new template's reading is compared with the plain one; a trusted, guided form is read with the cheaper `LLM_MODEL_TEMPLATE`). Keep `CLASSIC`'s behaviour unchanged: new
   reading behaviour goes behind `TEMPLATE`, which replaces `CLASSIC` once it is stable.
+- **AI models** (Settings → AI models, `AiModelSetting`, `backend/src/ai/models/`): provider + model per
+  outside AI use case (OCR, main reading, known forms, vision, last look) for the whole app — one instance
+  per customer. No choice = the `.env` setup. Build AI clients through `aiModels`, never from `env.llm` /
+  `env.vision` directly. Tesseract is ours and stays out of it.
 - **Amounts** in the UI go through `src/lib/money.ts` and `AmountInput` (thousands separators).
 - **Translations**: every new UI string goes into all four files in `src/i18n/translations/`
   (en, de, pl, tr).
@@ -64,7 +68,8 @@ rows; to inspect data, run a small `tsx` script with the Prisma client.
 ## Rules
 
 - **Secrets**: never print or copy the values of `MISTRAL_API_KEY`, `LLM_API_KEY`,
-  `VISION_API_KEY`, `ASR_API_KEY`, `JEV_API_KEY`, `JWT_SECRET` or `GOOGLE_DIRECTIONS_API_KEY` (in
+  `VISION_API_KEY`, `GEMINI_API_KEY`, `SCALEWAY_API_KEY`, `ASR_API_KEY`, `JEV_API_KEY`, `JWT_SECRET` or
+  `GOOGLE_DIRECTIONS_API_KEY` (in
   `backend/.env` or anywhere else). Add new variables to `backend/.env.example` with an empty
   value.
 - **ASR is a real system**: each successful send creates a real draft, and ASR has no

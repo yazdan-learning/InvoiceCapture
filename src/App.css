@@ -3100,28 +3100,6 @@ h1 {
   background: rgba(37, 99, 235, 0.18);
 }
 
-.doc-box-tag {
-  position: absolute;
-  bottom: 100%;
-  left: -2px;
-  margin-bottom: 5px;
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: #2563eb;
-  color: white;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.4;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.doc-box--tag-below .doc-box-tag {
-  bottom: auto;
-  top: 100%;
-  margin: 5px 0 0;
-}
-
 .doc-handle {
   position: absolute;
   width: 12px;

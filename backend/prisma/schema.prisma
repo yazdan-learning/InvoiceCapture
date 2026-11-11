@@ -449,3 +449,14 @@ model InvoiceTemplate {
   @@index([vendorKey])
   @@index([firstPageAspect])
 }
+
+// Settings → AI models: which provider and model each outside AI use case calls, for the whole app (each
+// customer runs its own instance). No row = the .env setup (MISTRAL_*, LLM_*, VISION_*). API keys stay in .env.
+model AiModelSetting {
+  // OCR, READING, TEMPLATE, VISION, LARGE (backend/src/ai/models/catalog.ts)
+  useCase   String   @id
+  // MISTRAL, GOOGLE, SCALEWAY, or OFF (the optional models only)
+  provider  String
+  model     String   @default("")
+  updatedAt DateTime @updatedAt
+}

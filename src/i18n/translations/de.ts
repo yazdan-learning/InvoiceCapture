@@ -282,7 +282,22 @@ const de: Translations = {
     invoiceReader: 'Rechnungen lesen mit',
     invoiceReaderClassic: 'Klassisch (stabil)',
     invoiceReaderTemplate: 'Vorlagenbasiert (Beta)',
-    invoiceReaderHint: 'Vorlagenbasiert zeigt auf dem Foto, wo jedes Feld gelesen wurde, und lässt Sie einen Wert aus dem Foto auswählen. Klassisch ist das stabile Lesen; Sie können hier jederzeit zurückwechseln.'
+    invoiceReaderHint: 'Vorlagenbasiert zeigt auf dem Foto, wo jedes Feld gelesen wurde, und lässt Sie einen Wert aus dem Foto auswählen. Klassisch ist das stabile Lesen; Sie können hier jederzeit zurückwechseln.',
+    aiSection: 'KI-Modelle',
+    aiHint: 'Welcher externe KI-Dienst für jeden Schritt verwendet wird. Die API-Schlüssel bleiben auf dem Server; nur Anbieter mit Schlüssel werden angeboten. Änderungen gelten ab dem nächsten Upload.',
+    aiServerDefault: 'Server-Einstellung ({model})',
+    aiOff: 'Aus',
+    aiModel: 'Modell',
+    aiOCR: 'OCR (Seite zu Text)',
+    aiOCRHint: 'Wandelt das Foto oder PDF in Text um. Unser eigener Tesseract-Dienst für die Feldrahmen ist kostenlos und wird hier nicht eingestellt.',
+    aiREADING: 'Hauptmodell zum Lesen',
+    aiREADINGHint: 'Liest die Rechnungsfelder aus dem OCR-Text, liest mit dem Foto erneut, wenn etwas nicht aufgeht, und ordnet Rohstoffe zu.',
+    aiTEMPLATE: 'Modell für bekannte Formulare (günstiger)',
+    aiTEMPLATEHint: 'Liest vertraute Formulare, die die App gelernt hat. Das Ergebnis wird geprüft und fällt sonst auf das Hauptmodell zurück.',
+    aiVISION: 'Bildmodell',
+    aiVISIONHint: 'Liest Handschrift und Seiten, die die OCR verfehlt, setzt Feldrahmen, wenn Tesseract es nicht kann, und führt „Mit KI lesen“ aus.',
+    aiLARGE: 'Modell für den letzten Versuch',
+    aiLARGEHint: 'Noch ein Versuch mit einem großen Modell, wenn ein Ergebnis weiterhin nicht aufgeht. Standardmäßig aus.'
   },
 
   review: {

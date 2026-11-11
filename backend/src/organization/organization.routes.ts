@@ -4,6 +4,7 @@ import { createOrganizationService } from './organization.service';
 import { asyncHandler } from '../shared/asyncHandler';
 import { validate } from '../shared/validate';
 import { updateOrganizationSettingsSchema } from './organization.schema';
+import { aiModels, aiModelsView, validChoices } from '../ai/models';
 
 const organizationService = createOrganizationService();
 const organizationController = createOrganizationController(organizationService);
@@ -17,6 +18,21 @@ organizationRouter.patch(
   '/settings',
   validate(updateOrganizationSettingsSchema, 'body'),
   asyncHandler(organizationController.updateSettings)
+);
+
+// Settings → AI models: the provider and model of each outside AI use case, for the whole app (each customer
+// runs its own instance). Keys stay in .env; a choice the server has no key for is dropped.
+organizationRouter.get('/ai-models', (_req, res) => {
+  res.json(aiModelsView(aiModels));
+});
+organizationRouter.put(
+  '/ai-models',
+  asyncHandler(async (req, res) => {
+    const body = (req.body ?? {}) as { choices?: unknown };
+    const choices = body.choices && typeof body.choices === 'object' ? (body.choices as Record<string, unknown>) : {};
+    await aiModels.save(validChoices(choices));
+    res.json(aiModelsView(aiModels));
+  })
 );
 
 // The organization's country profile, for every signed-in user (mounted

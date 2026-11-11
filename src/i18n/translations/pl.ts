@@ -280,7 +280,22 @@ const pl: Translations = {
     invoiceReader: 'Odczytuj faktury za pomocą',
     invoiceReaderClassic: 'Klasyczny (stabilny)',
     invoiceReaderTemplate: 'Oparty na szablonach (beta)',
-    invoiceReaderHint: 'Tryb oparty na szablonach pokazuje na zdjęciu, skąd odczytano każde pole, i pozwala wybrać wartość ze zdjęcia. Klasyczny to stabilny odczyt; możesz tu wrócić do niego w każdej chwili.'
+    invoiceReaderHint: 'Tryb oparty na szablonach pokazuje na zdjęciu, skąd odczytano każde pole, i pozwala wybrać wartość ze zdjęcia. Klasyczny to stabilny odczyt; możesz tu wrócić do niego w każdej chwili.',
+    aiSection: 'Modele AI',
+    aiHint: 'Z jakiej zewnętrznej usługi AI korzysta każdy krok. Klucze API zostają na serwerze; oferowani są tylko dostawcy z kluczem. Zmiany obowiązują od następnego przesłania.',
+    aiServerDefault: 'Ustawienie serwera ({model})',
+    aiOff: 'Wyłączone',
+    aiModel: 'Model',
+    aiOCR: 'OCR (strona na tekst)',
+    aiOCRHint: 'Zamienia zdjęcie lub PDF na tekst. Nasza własna usługa Tesseract do ramek pól jest darmowa i nie ustawia się jej tutaj.',
+    aiREADING: 'Główny model odczytu',
+    aiREADINGHint: 'Odczytuje pola faktury z tekstu OCR, czyta ponownie ze zdjęciem, gdy coś się nie zgadza, i dopasowuje surowce.',
+    aiTEMPLATE: 'Model dla znanych formularzy (tańszy)',
+    aiTEMPLATEHint: 'Odczytuje zaufane formularze, których aplikacja się nauczyła. Wynik jest sprawdzany, a w razie problemu używany jest model główny.',
+    aiVISION: 'Model wizyjny',
+    aiVISIONHint: 'Odczytuje pismo odręczne i strony pominięte przez OCR, umieszcza ramki pól, gdy Tesseract nie potrafi, i obsługuje „Odczytaj z AI”.',
+    aiLARGE: 'Model ostatniej próby',
+    aiLARGEHint: 'Jeszcze jedna próba z dużym modelem, gdy odczyt nadal się nie zgadza. Domyślnie wyłączony.'
   },
 
   review: {
